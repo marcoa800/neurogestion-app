@@ -1,5 +1,6 @@
 {
   "name": "neurogestion-app",
+  "homepage": "https://marcoa800.github.io/neurogestion-app",
   "private": true,
   "version": "1.0.0",
   "type": "module",
