@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Motor Anatómico 3D - NeuroVisor Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #050505;
+            --panel-bg: rgba(10, 10, 15, 0.85);
+            --accent: #0ea5e9;
+        }
+        body { 
+            margin: 0; overflow: hidden; background-color: var(--bg-dark); 
+            color: #f8fafc; font-family: 'Inter', system-ui, sans-serif; 
+            user-select: none;
+        }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; }
+        .pointer-events-auto { pointer-events: auto; }
+        
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+        }
+
+        .layer-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid transparent; }
+        .layer-btn.active { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); }
+        .layer-btn:not(.active) { opacity: 0.5; filter: grayscale(80%); }
+
+        .mode-btn { transition: all 0.3s; }
+        .mode-btn.active { background: var(--accent); color: white; border-color: #38bdf8; font-weight: 600; }
+
+        .module-btn { transition: all 0.2s; border: 1px solid transparent; }
+        .module-btn.active { background: #2563eb; border-color: #60a5fa; box-shadow: 0 0 15px rgba(37,99,235,0.4); }
+
+        /* 3D Labels */
+        .anatomical-label {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(4px);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            z-index: 5;
+        }
+        .anatomical-label::after {
+            content: ''; position: absolute; top: 100%; left: 50%;
+            margin-left: -5px; border-width: 5px; border-style: solid;
+            border-color: rgba(255, 255, 255, 0.2) transparent transparent transparent;
+        }
+
+        #loader { transition: opacity 0.5s; }
+    </style>
+</head>
+<body>
+
+    <div id="loader" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-zinc-950 pointer-events-auto">
+        <i class="fa-solid fa-microscope text-5xl text-sky-500 mb-6 animate-pulse"></i>
+        <h2 class="text-2xl font-light text-zinc-300 tracking-widest uppercase">Atlas 3D Cargando</h2>
+        <p class="text-sm text-zinc-500 mt-2" id="loader-text">Descargando modelos anatómicos reales (HuBMAP CCF Atlas)...</p>
+        <div class="w-64 h-1 bg-zinc-800 rounded-full mt-6 overflow-hidden">
+            <div class="h-full bg-sky-500 w-full origin-left scale-x-0 transition-[transform] duration-700 ease-out" id="loader-bar"></div>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+    <div id="labels-container" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+    <div id="ui-layer">
+        <header class="glass-panel p-3 flex justify-between items-center pointer-events-auto border-b border-zinc-800">
+            <div class="flex items-center gap-4">
+                <div class="bg-gradient-to-br from-sky-500 to-blue-700 p-2 rounded-lg text-white shadow-[0_0_15px_rgba(14,165,233,0.5)]">
+                    <i class="fa-solid fa-dna text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-white tracking-tight leading-tight">ATLAS <span class="text-sky-400 font-light">PRO</span></h1>
+                    <p class="text-[10px] text-zinc-400 uppercase tracking-widest font-semibold">Netter-Style Engine</p>
+                </div>
+            </div>
+            
+            <div class="hidden md:flex bg-zinc-900/80 p-1 rounded-lg border border-zinc-700">
+                <button onclick="setMode('estudiante')" id="mode-estudiante" class="mode-btn active px-4 py-1.5 rounded text-xs text-zinc-300"><i class="fa-solid fa-user-graduate mr-1"></i> Estudiante</button>
+                <button onclick="setMode('experto')" id="mode-experto" class="mode-btn px-4 py-1.5 rounded text-xs text-zinc-300 border-l border-zinc-800"><i class="fa-solid fa-user-doctor mr-1"></i> Experto</button>
+                <button onclick="setMode('diagnostico')" id="mode-diagnostico" class="mode-btn px-4 py-1.5 rounded text-xs text-zinc-300 border-l border-zinc-800"><i class="fa-solid fa-microscope mr-1"></i> Diagnóstico</button>
+            </div>
+        </header>
+
+        <div class="flex-1 flex overflow-hidden">
+            
+            <aside class="glass-panel w-20 md:w-64 flex flex-col pointer-events-auto border-r border-zinc-800 z-20">
+                
+                <div class="p-2 md:p-4 border-b border-zinc-800">
+                    <h2 class="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3 hidden md:block"><i class="fa-solid fa-cubes mr-2"></i> Módulos</h2>
+                    <div class="flex flex-col gap-2">
+                        <button onclick="setAnatomy('brain')" id="mod-brain" class="module-btn active bg-zinc-800 hover:bg-zinc-700 p-2 md:p-3 rounded-xl flex items-center justify-center md:justify-start gap-3">
+                            <i class="fa-solid fa-brain text-lg"></i><span class="text-sm font-semibold hidden md:block">Cerebro</span>
+                        </button>
+                        <button onclick="setAnatomy('spine')" id="mod-spine" class="module-btn bg-zinc-800 hover:bg-zinc-700 p-2 md:p-3 rounded-xl flex items-center justify-center md:justify-start gap-3">
+                            <i class="fa-solid fa-bone text-lg"></i><span class="text-sm font-semibold hidden md:block">Columna</span>
+                        </button>
+                        <button onclick="setAnatomy('journey')" id="mod-journey" class="module-btn bg-zinc-800 hover:bg-zinc-700 p-2 md:p-3 rounded-xl flex items-center justify-center md:justify-start gap-3">
+                            <i class="fa-solid fa-hospital-user text-lg"></i><span class="text-sm font-semibold hidden md:block">Viaje Paciente</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-2 md:p-4 flex flex-col gap-2" id="layer-controls">
+                    <!-- JS inyecta botones de capas -->
+                </div>
+            </aside>
+
+            <div class="flex-1 relative"></div>
+
+            <aside id="clinical-panel" class="glass-panel w-72 md:w-80 flex flex-col pointer-events-auto border-l border-zinc-800 z-20 hidden">
+                <div class="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+                    <h2 class="text-xs font-bold text-sky-500 uppercase tracking-widest"><i class="fa-solid fa-file-medical mr-2"></i> Diagnóstico / Fase</h2>
+                </div>
+                <div class="p-5 overflow-y-auto flex-1">
+                    <div id="info-pathology" class="bg-red-950/30 border border-red-900/50 p-4 rounded-xl">
+                        <h4 class="text-xs uppercase text-red-400 font-bold mb-2 flex items-center"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Seleccionar Evento</h4>
+                        <div id="patho-buttons" class="flex flex-col gap-2 mb-4">
+                            <!-- JS inyecta botones -->
+                        </div>
+                        <p id="patho-desc" class="text-sm text-red-200/90 leading-relaxed font-light mt-4 pt-4 border-t border-red-900/30"></p>
+                    </div>
+
+                    <div id="expert-data" class="mt-6 hidden">
+                        <h4 class="text-[10px] uppercase text-sky-400 font-bold mb-2">Datos Morfológicos FIPAT</h4>
+                        <div class="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800 text-xs text-zinc-400 font-mono space-y-2">
+                            <p>Densidad Tisular: <span class="text-zinc-200">1.04 g/cm³</span></p>
+                            <p>Flujo Sanguíneo: <span class="text-zinc-200">50 mL/100g/min</span></p>
+                            <p>Vascularización: <span class="text-zinc-200">Polígono de Willis Activo</span></p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        // --- DATA DICTIONARY ---
+        const systemLayers = [
+            { id: 'bone', name: 'Óseo', icon: 'fa-skull', color: '#f0ebd8', active: true },
+            { id: 'tissue', name: 'Nervioso/Tejido', icon: 'fa-brain', color: '#e8d5b5', active: true },
+            { id: 'vessels', name: 'Vascular', icon: 'fa-droplet', color: '#cc1111', active: true },
+            { id: 'pathology', name: 'Patología', icon: 'fa-virus', color: '#aaee22', active: true }
+        ];
+
+        const pathologies = {
+            brain: [
+                { id: 'normal', name: 'Cerebro Sano' },
+                { id: 'aneurysm', name: 'Aneurisma Sacular' },
+                { id: 'avm', name: 'Malformación Arteriovenosa' },
+                { id: 'tumor', name: 'Glioblastoma Multiforme' },
+                { id: 'hematoma', name: 'Hematoma Subdural' },
+                { id: 'stroke', name: 'Infarto Isquémico (Ictus)' }
+            ],
+            spine: [
+                { id: 'normal', name: 'Columna Sana' },
+                { id: 'hernia', name: 'Hernia Discal (L4-L5)' },
+                { id: 'stenosis', name: 'Estenosis del Canal' },
+                { id: 'listesis', name: 'Espondilolistesis' },
+                { id: 'wedge', name: 'Fractura por Compresión (Cuña)' },
+                { id: 'burst', name: 'Fractura por Estallido' }
+            ],
+            journey: [
+                { id: 'admission', name: '1. Admisión y Triaje' },
+                { id: 'mri', name: '2. Resonancia Magnética (RMN)' },
+                { id: 'surgery', name: '3. Intervención Quirúrgica' },
+                { id: 'recovery', name: '4. Cuidados Intensivos (UCI)' },
+                { id: 'rehab', name: '5. Fisioterapia y Rehabilitación' },
+                { id: 'discharge', name: '6. Alta Médica' }
+            ]
+        };
+
+        const descriptions = {
+            // Cerebro
+            aneurysm: "Dilatación focal de la pared arterial. En el modelo se observa en la arteria comunicante anterior, pulsando peligrosamente al ritmo cardíaco.",
+            avm: "Nido vascular aberrante. Las arterias se conectan directamente con las venas sin red capilar intermedia, creando un enredo de vasos propensos a romperse.",
+            tumor: "Masa neoplásica invasiva. Note el 'efecto de masa' que desplaza la línea media anatómica, comprimiendo el tejido cerebral sano adyacente.",
+            hematoma: "Acumulación de sangre venosa entre la duramadre y la aracnoides. Tiene forma de media luna y ejerce presión difusa sobre el hemisferio.",
+            stroke: "Muerte del tejido cerebral (necrosis isquémica) por falta de riego sanguíneo. Se observa un área pálida y degradada en el territorio de la arteria cerebral media.",
+            
+            // Columna
+            hernia: "Extrusión del núcleo pulposo a través del anillo fibroso roto. Comprime mecánicamente la raíz nerviosa emergente, provocando radiculopatía.",
+            stenosis: "Estrechamiento del canal medular provocado por el crecimiento de osteofitos (espolones óseos) y engrosamiento de los ligamentos, estrangulando los nervios.",
+            listesis: "Desplazamiento anterior de una vértebra sobre la inferior debido a inestabilidad estructural, causando cizallamiento en el canal medular.",
+            wedge: "Colapso de la porción anterior del cuerpo vertebral, dándole forma de cuña. Muy común en pacientes con osteoporosis avanzada.",
+            burst: "Traumatismo axial severo. El cuerpo vertebral se fragmenta y la retropulsión ósea (esquirlas) invade el canal medular, amenazando la médula espinal.",
+            
+            // Viaje
+            admission: "El paciente llega al centro. Se realizan las primeras evaluaciones neurológicas, estabilización de signos vitales y preparación preoperatoria.",
+            mri: "Se obtienen imágenes detalladas del cerebro o columna utilizando potentes campos magnéticos para planificar la cirugía con precisión milimétrica.",
+            surgery: "El equipo neuroquirúrgico interviene utilizando microscopios de alta resolución, neuronavegación y neuromonitoreo intraoperatorio.",
+            recovery: "El paciente es trasladado a la UCI para un monitoreo estricto de la presión intracraneal, hemodinámica y despertar neurológico.",
+            rehab: "Inicio de la movilización temprana. Fisioterapia motora y respiratoria para recuperar la fuerza, el equilibrio y la independencia funcional.",
+            discharge: "El paciente alcanza la estabilidad neurológica y clínica necesaria para continuar su recuperación en casa con seguimiento ambulatorio."
+        };
+
+        // --- SISTEMA DE ETIQUETAS ANATÓMICAS ---
+        const labelsData = {
+            // Posiciones con rotación.y = π (frontal hacia +Z, occipital hacia -Z)
+            brain: [
+                { pos: [ 0.5, 3.5,  2.8], nameEstudiante: 'Lóbulo Frontal',    nameExperto: 'Lobus frontalis' },
+                { pos: [-0.5, 4.5,  0.0], nameEstudiante: 'Lóbulo Parietal',   nameExperto: 'Lobus parietalis' },
+                { pos: [ 3.2, 1.8,  0.5], nameEstudiante: 'Lóbulo Temporal',   nameExperto: 'Lobus temporalis' },
+                { pos: [ 0.0, 1.0, -2.8], nameEstudiante: 'Cerebelo',          nameExperto: 'Cerebellum' },
+                { pos: [ 0.0, 0.5, -1.2], nameEstudiante: 'Tronco Encefálico', nameExperto: 'Truncus encephali' }
+            ],
+            spine: [
+                { pos: [0, 1.5, 0.6], nameEstudiante: 'Cuerpo Vertebral', nameExperto: 'Corpus vertebrae' },
+                { pos: [0, 1.0, 0.6], nameEstudiante: 'Disco Intervertebral', nameExperto: 'Discus intervertebralis' },
+                { pos: [0, 1.2, -0.4], nameEstudiante: 'Médula Espinal', nameExperto: 'Medulla spinalis' },
+                { pos: [-1.2, 1.0, -0.3], nameEstudiante: 'Raíz Nerviosa', nameExperto: 'Radix nervi spinalis' },
+                { pos: [0, 1.5, -1.6], nameEstudiante: 'Apófisis Espinosa', nameExperto: 'Processus spinosus' }
+            ]
+        };
+
+        let currentMode = 'estudiante'; 
+        let currentAnatomy = 'brain';
+        let currentPathology = 'normal';
+        let isMobile = window.innerWidth <= 640;
+        let htmlLabels = [];
+
+        // --- THREE.JS GLOBALS ---
+        let scene, camera, renderer, controls;
+        let activeAnatomyGroup = new THREE.Group();
+        let clock = new THREE.Clock();
+        let animatedMeshes = [];
+
+        // --- MODELOS GLB REALES (HuBMAP CCF Atlas, CC BY 4.0) ---
+        // Allen_Brain.glb: Allen Institute female brain surface
+        // Spinal_Cord.glb:  Visible Human Project female spinal cord
+        let brainGLB = null;
+        let spinalCordGLB = null;
+
+        // --- MATEMÁTICAS PROCEDURALES ---
+        function pseudo3DNoise(x, y, z) {
+            const freq1 = 4.0; const freq2 = 8.0; const freq3 = 15.0;
+            let n = Math.sin(x*freq1 + y*freq1)*Math.cos(y*freq1 + z*freq1)*Math.sin(z*freq1 + x*freq1);
+            n += 0.5 * Math.sin(x*freq2)*Math.cos(y*freq2)*Math.sin(z*freq2);
+            n += 0.25 * Math.sin(x*freq3)*Math.cos(y*freq3)*Math.sin(z*freq3);
+            return n;
+        }
+
+        function createBoneTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f2eed5'; ctx.fillRect(0,0,512,512);
+            for(let i=0; i<10000; i++) {
+                ctx.fillStyle = `rgba(0,0,0, ${Math.random()*0.1})`;
+                ctx.beginPath(); ctx.arc(Math.random()*512, Math.random()*512, Math.random()*2, 0, Math.PI*2); ctx.fill();
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        // --- MATERIALES PBR HIPERREALISTAS ---
+        const mats = {
+            bone: new THREE.MeshPhysicalMaterial({ color: 0xe8e4cc, roughness: 0.8, metalness: 0.05, bumpMap: createBoneTexture(), bumpScale: 0.03 }),
+            boneTransp: new THREE.MeshPhysicalMaterial({ color: 0xe8e4cc, roughness: 0.5, transparent: true, opacity: 0.15, depthWrite: false, side: THREE.DoubleSide }),
+            tissue: new THREE.MeshPhysicalMaterial({ color: 0xd9baba, roughness: 0.3, metalness: 0.0, clearcoat: 1.0, clearcoatRoughness: 0.2, transmission: 0.1, thickness: 2.0 }),
+            tissueExpert: new THREE.MeshPhysicalMaterial({ color: 0xd9baba, roughness: 0.3, transparent: true, opacity: 0.4, depthWrite: false }),
+            tissueStroke: new THREE.MeshPhysicalMaterial({ color: 0x888899, roughness: 0.8, metalness: 0.0, clearcoat: 0.0 }), // Tejido muerto
+            nerve: new THREE.MeshPhysicalMaterial({ color: 0xffd700, roughness: 0.5, metalness: 0.1, clearcoat: 0.5, clearcoatRoughness: 0.3 }),
+            artery: new THREE.MeshPhysicalMaterial({ color: 0xcc0000, roughness: 0.2, metalness: 0.1, clearcoat: 1.0, clearcoatRoughness: 0.1 }),
+            vein: new THREE.MeshPhysicalMaterial({ color: 0x0033aa, roughness: 0.2, metalness: 0.1, clearcoat: 1.0, clearcoatRoughness: 0.1 }),
+            disc: new THREE.MeshPhysicalMaterial({ color: 0xbdc9d4, roughness: 0.7 }),
+            tumor: new THREE.MeshPhysicalMaterial({ color: 0x73823d, roughness: 0.9, bumpScale: 0.2 }),
+            hematoma: new THREE.MeshPhysicalMaterial({ color: 0x4a0000, roughness: 0.2, clearcoat: 0.8, transparent: true, opacity: 0.95 }),
+            hernia: new THREE.MeshPhysicalMaterial({ color: 0xff1111, roughness: 0.2, emissive: 0x330000 })
+        };
+
+        // --- INICIALIZACIÓN ---
+        function initEngine() {
+            const container = document.getElementById('canvas-container');
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+            container.appendChild(renderer.domElement);
+
+            scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x050505, 0.015);
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor = 0.05; controls.minDistance = 3; controls.maxDistance = 25;
+
+            setupLighting();
+            buildUI();
+
+            // ── Precarga de modelos anatómicos GLB reales ───────────────────────
+            // Normaliza un GLB al tamaño pedido y lo centra en origen.
+            // Retorna un Group wrapper: clonarlo y setear wrapper.position == mover
+            // el modelo sin romper la centración interna del GLB.
+            function normalizeGLB(root, targetSize) {
+                // Paso 1: escalar (pre-bbox para obtener escala)
+                const box0 = new THREE.Box3().setFromObject(root);
+                const size0 = box0.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size0.x, size0.y, size0.z);
+                if(maxDim === 0) return root;
+                const scale = targetSize / maxDim;
+                root.scale.setScalar(scale);
+
+                // Paso 2: centrar en origen — recompute bbox POST-escala
+                const box1 = new THREE.Box3().setFromObject(root);
+                const c = box1.getCenter(new THREE.Vector3());
+                root.position.set(-c.x, -c.y, -c.z);
+
+                // Paso 3: envolver en Group — geometry queda centrada en (0,0,0)
+                // relativa al wrapper. Al clonar el wrapper y moverlo, la geometry
+                // sigue exactamente al wrapper sin desviaciones.
+                const wrapper = new THREE.Group();
+                wrapper.add(root);
+                return wrapper;
+            }
+
+            const gltfLoader = new THREE.GLTFLoader();
+            const loaderText = document.getElementById('loader-text');
+            const loaderBar  = document.getElementById('loader-bar');
+            let loadedCount = 0;
+
+            const onModelReady = () => {
+                loadedCount++;
+                loaderBar.style.transform = `scaleX(${loadedCount / 2})`;
+                if(loadedCount >= 2) {
+                    setAnatomy('brain');
+                    document.getElementById('loader').style.opacity = '0';
+                    setTimeout(() => document.getElementById('loader').style.display = 'none', 600);
+                }
+            };
+
+            // Cerebro: Allen Institute Female Brain (HuBMAP CCF v1.3, CC BY 4.0)
+            if(loaderText) loaderText.innerText = 'Cargando cerebro — Allen Institute (HuBMAP CCF)...';
+            gltfLoader.load('./Allen_Brain.glb', (gltf) => {
+                brainGLB = normalizeGLB(gltf.scene, 6.5);   // wrapper centrado en (0,0,0)
+                if(loaderText) loaderText.innerText = 'Cargando médula — Visible Human Project...';
+                onModelReady();
+            }, undefined, (err) => {
+                console.warn('[NeuroAtlas] Allen Brain no disponible, usando geometría procedural.', err);
+                onModelReady();
+            });
+
+            // Médula Espinal: Visible Human Female Spinal Cord (HuBMAP CCF v1.3, CC BY 4.0)
+            gltfLoader.load('./Spinal_Cord.glb', (gltf) => {
+                spinalCordGLB = normalizeGLB(gltf.scene, 9.5);  // wrapper centrado en (0,0,0)
+                onModelReady();
+            }, undefined, (err) => {
+                console.warn('[NeuroAtlas] Spinal Cord no disponible, usando geometría procedural.', err);
+                onModelReady();
+            });
+            // ────────────────────────────────────────────────────────────────────
+
+            window.addEventListener('resize', onWindowResize, false);
+            animate();
+        }
+
+        function setupLighting() {
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const spotLight = new THREE.SpotLight(0xffffff, 2.0);
+            spotLight.position.set(5, 15, 10);
+            spotLight.angle = Math.PI/4; spotLight.penumbra = 0.5; spotLight.castShadow = true;
+            spotLight.shadow.mapSize.width = 2048; spotLight.shadow.mapSize.height = 2048; spotLight.shadow.bias = -0.0005;
+            scene.add(spotLight);
+            // IMPORTANTE: scene.add() retorna `scene`, no el objeto añadido.
+            // Por eso se crean los lights por separado para evitar mover scene.position.
+            const dl1 = new THREE.DirectionalLight(0x90b0ff, 0.8);
+            dl1.position.set(-10, 5, -10);
+            scene.add(dl1);
+            const dl2 = new THREE.DirectionalLight(0xffddaa, 0.6);
+            dl2.position.set(10, -5, -5);
+            scene.add(dl2);
+        }
+
+        // --- HELPER PARA VASOS (Splines) ---
+        function createVessel(points, radius, material) {
+            const curve = new THREE.CatmullRomCurve3(points);
+            const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 32, radius, 8, false), material);
+            return tube;
+        }
+
+        // --- GENERADOR CEREBRO ---
+        function generateBrain() {
+            animatedMeshes = [];
+            const group = new THREE.Group();
+            let shiftX = (currentPathology === 'tumor' || currentPathology === 'hematoma') ? 0.3 : 0;
+
+            // 1. CAPA ÓSEA
+            const skull = new THREE.Mesh(new THREE.SphereGeometry(3.6, 64, 64, 0, Math.PI*2, 0, Math.PI*0.6).scale(0.85, 1, 1.1), mats.boneTransp);
+            skull.position.set(0, 1.5, 0); skull.userData.layer = 'bone'; group.add(skull);
+
+            // 2. CAPA TEJIDO ────────────────────────────────────────────────────────
+            const tissueGroup = new THREE.Group(); tissueGroup.userData.layer = 'tissue';
+            const tMat = (currentMode === 'experto') ? mats.tissueExpert : mats.tissue;
+
+            if (brainGLB) {
+                // ── Modelo anatómico real: Allen Institute Brain (HuBMAP CCF Atlas) ──
+                const brainMesh = brainGLB.clone();
+                brainMesh.position.set(0, 1.5, 0);   // elevar al centro del cráneo
+                brainMesh.rotation.y = Math.PI;       // girar 180°Y → lóbulo frontal hacia la cámara (+Z)
+                brainMesh.traverse(child => {
+                    if(!child.isMesh) return;
+                    if(currentPathology === 'stroke')
+                        child.material = mats.tissueStroke.clone();
+                    else if(currentMode === 'experto')
+                        child.material = mats.tissueExpert.clone();
+                    else
+                        child.material = mats.tissue.clone();
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    child.userData.layer = 'tissue';
+                });
+                tissueGroup.add(brainMesh);
+            } else {
+                // ── Fallback procedural (si GLB no cargó) ───────────────────────────
+                const hemiGeoBase = new THREE.IcosahedronGeometry(3.0, 32); hemiGeoBase.scale(0.8, 1.1, 1.3);
+                const pos = hemiGeoBase.attributes.position; const v = new THREE.Vector3();
+                for(let i=0; i<pos.count; i++) {
+                    v.fromBufferAttribute(pos, i);
+                    if(v.x < 0) v.x *= 0.1;
+                    if(v.y < -0.5 && v.z > 0.5 && v.x > 1.0) v.y -= 0.4;
+                    v.addScaledVector(v.clone().normalize(), pseudo3DNoise(v.x, v.y, v.z) * 0.25);
+                    pos.setXYZ(i, v.x, v.y, v.z);
+                }
+                hemiGeoBase.computeVertexNormals();
+
+                // Hemisferio Izquierdo
+                const leftHemi = new THREE.Mesh(hemiGeoBase, tMat); leftHemi.position.set(-1.4, 1.6, 0);
+                leftHemi.castShadow = true; leftHemi.receiveShadow = true; tissueGroup.add(leftHemi);
+
+                // Hemisferio Derecho (Patologías)
+                const hemiGeoR = hemiGeoBase.clone(); const posR = hemiGeoR.attributes.position;
+                for(let i=0; i<posR.count; i++) {
+                    let px = -posR.getX(i);
+                    if (currentPathology === 'hematoma' && px > 1.0 && posR.getY(i) > 0) px *= 0.6;
+                    posR.setX(i, px);
+                }
+                hemiGeoR.computeVertexNormals();
+
+                let rightMat = tMat;
+                if (currentPathology === 'stroke') rightMat = mats.tissueStroke;
+                const rightHemi = new THREE.Mesh(hemiGeoR, rightMat); rightHemi.position.set(1.4, 1.6, 0);
+                rightHemi.castShadow = true; rightHemi.receiveShadow = true; tissueGroup.add(rightHemi);
+
+                const stem  = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.4, 2.5, 32), tMat); stem.position.set(0, -1.0, -0.5); stem.rotation.x = 0.2;
+                const cereb = new THREE.Mesh(new THREE.SphereGeometry(1.6, 64, 32).scale(1.5, 0.5, 1.1), tMat); cereb.position.set(0, -1.2, -2.0);
+                tissueGroup.add(stem, cereb);
+            }
+            // ───────────────────────────────────────────────────────────────────────
+            tissueGroup.position.x = shiftX; group.add(tissueGroup);
+
+            // 3. CAPA VASCULAR (Polígono de Willis y corticales)
+            const vesselsGroup = new THREE.Group(); vesselsGroup.userData.layer = 'vessels';
+            
+            // Basilar & PCAs
+            vesselsGroup.add(createVessel([new THREE.Vector3(0,-2.5,-0.5), new THREE.Vector3(0,-1.5,-0.2), new THREE.Vector3(0,-0.8,0.2)], 0.08, mats.artery));
+            vesselsGroup.add(createVessel([new THREE.Vector3(0,-0.8,0.2), new THREE.Vector3(-0.8,-0.5,-0.5), new THREE.Vector3(-1.2,0,-1.0)], 0.06, mats.artery));
+            vesselsGroup.add(createVessel([new THREE.Vector3(0,-0.8,0.2), new THREE.Vector3(0.8,-0.5,-0.5), new THREE.Vector3(1.2,0,-1.0)], 0.06, mats.artery));
+            
+            // ICAs & MCAs
+            vesselsGroup.add(createVessel([new THREE.Vector3(-0.6,-2.0,0.5), new THREE.Vector3(-0.6,-1.0,0.8), new THREE.Vector3(-0.8,-0.5,1.0), new THREE.Vector3(-1.8,0,1.2)], 0.08, mats.artery));
+            vesselsGroup.add(createVessel([new THREE.Vector3(0.6,-2.0,0.5), new THREE.Vector3(0.6,-1.0,0.8), new THREE.Vector3(0.8,-0.5,1.0), new THREE.Vector3(1.8,0,1.2)], 0.08, mats.artery));
+
+            // Ramificaciones superficiales aleatorias
+            for(let i=0; i<60; i++) {
+                const r = 3.2; const phi = Math.random() * Math.PI; const theta = Math.random() * Math.PI * 2;
+                const x1 = r * Math.sin(phi) * Math.cos(theta); const y1 = (r * Math.sin(phi) * Math.sin(theta)) * 1.1; const z1 = r * Math.cos(phi) * 1.3;
+                if(y1 < 0) continue; // Solo parte superior
+                const x2 = x1 + (Math.random()-0.5)*1.5; const y2 = y1 + (Math.random()-0.5)*1.5; const z2 = z1 + (Math.random()-0.5)*1.5;
+                vesselsGroup.add(createVessel([new THREE.Vector3(x1,y1,z1), new THREE.Vector3(x2,y2,z2)], 0.02, Math.random()>0.6?mats.vein:mats.artery));
+            }
+            vesselsGroup.position.x = shiftX; group.add(vesselsGroup);
+
+            // 4. CAPA PATOLOGÍA
+            const pathGroup = new THREE.Group(); pathGroup.userData.layer = 'pathology';
+            if (currentPathology === 'aneurysm') {
+                const aneurysm = new THREE.Mesh(new THREE.SphereGeometry(0.35, 32, 32), mats.artery);
+                aneurysm.position.set(0.6, -0.7, 0.8);
+                animatedMeshes.push({ mesh: aneurysm, type: 'pulse' });
+                pathGroup.add(aneurysm); pathGroup.position.x = shiftX;
+            } else if (currentPathology === 'tumor') {
+                const tumorGeo = new THREE.IcosahedronGeometry(1.5, 16);
+                const tp = tumorGeo.attributes.position;
+                for(let i=0; i<tp.count; i++) tp.setXYZ(i, tp.getX(i)+(Math.random()-0.5)*0.5, tp.getY(i)+(Math.random()-0.5)*0.5, tp.getZ(i)+(Math.random()-0.5)*0.5);
+                tumorGeo.computeVertexNormals();
+                const tumor = new THREE.Mesh(tumorGeo, mats.tumor); tumor.position.set(-1.8, 2.0, 0.2);
+                animatedMeshes.push({ mesh: tumor, type: 'breath' });
+                pathGroup.add(tumor);
+            } else if (currentPathology === 'hematoma') {
+                const hemGeo = new THREE.SphereGeometry(3.6, 64, 64, 0, Math.PI, 0, Math.PI);
+                const hp = hemGeo.attributes.position;
+                for(let i=0; i<hp.count; i++) if(hp.getX(i) < 0) hp.setX(i, hp.getX(i) * -0.5); 
+                hemGeo.scale(0.15, 1.1, 1.15); hemGeo.computeVertexNormals();
+                const hematoma = new THREE.Mesh(hemGeo, mats.hematoma); hematoma.position.set(2.6, 1.6, 0);
+                pathGroup.add(hematoma);
+            } else if (currentPathology === 'avm') {
+                for(let i=0; i<30; i++) {
+                    const r = 1.0;
+                    vesselsGroup.add(createVessel([
+                        new THREE.Vector3((Math.random()-0.5)*r - 1.5, Math.random()*r + 1.5, (Math.random()-0.5)*r + 0.5),
+                        new THREE.Vector3((Math.random()-0.5)*r - 1.5, Math.random()*r + 1.5, (Math.random()-0.5)*r + 0.5),
+                        new THREE.Vector3((Math.random()-0.5)*r - 1.5, Math.random()*r + 1.5, (Math.random()-0.5)*r + 0.5)
+                    ], 0.05, Math.random()>0.5?mats.artery:mats.vein));
+                }
+            }
+            group.add(pathGroup);
+            return group;
+        }
+
+        // --- GENERADOR COLUMNA ---
+        function createAnatomicVertebra(isWedge, isBurst, isStenosis) {
+            const vGroup = new THREE.Group();
+            
+            if (isBurst) {
+                for(let i=0; i<12; i++) {
+                    const frag = new THREE.Mesh(new THREE.BoxGeometry(0.5+Math.random(), 0.5+Math.random(), 0.5+Math.random()), mats.bone);
+                    frag.position.set((Math.random()-0.5)*2, (Math.random()-0.5), 0.5 + (Math.random()-0.5)*1.5);
+                    frag.rotation.set(Math.random(), Math.random(), Math.random());
+                    if(i<4) frag.position.z -= 1.0; // Retropulsión
+                    vGroup.add(frag);
+                }
+            } else {
+                const bodyGeo = new THREE.CylinderGeometry(1.6, 1.6, 1.2, 32);
+                bodyGeo.scale(1.2, isWedge ? 0.5 : 1.0, 0.9);
+                if (isWedge) bodyGeo.rotateX(0.15); // Acuñamiento
+                
+                const pos = bodyGeo.attributes.position;
+                for(let i=0; i<pos.count; i++) {
+                    if(pos.getZ(i) < 0 && Math.abs(pos.getX(i)) < 1.0) pos.setZ(i, pos.getZ(i) + 0.5); 
+                }
+                bodyGeo.computeVertexNormals();
+                const body = new THREE.Mesh(bodyGeo, mats.bone);
+                body.position.set(0, 0, 0.6); body.castShadow = true; body.receiveShadow = true;
+                vGroup.add(body);
+            }
+
+            const pedL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), mats.bone); pedL.position.set(-0.9, 0, -0.2);
+            const pedR = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), mats.bone); pedR.position.set(0.9, 0, -0.2);
+            
+            if(isStenosis) {
+                // Osteofitos estrechando canal
+                const osteoL = new THREE.Mesh(new THREE.SphereGeometry(0.4), mats.bone); osteoL.position.set(-0.6, 0, -0.5);
+                const osteoR = new THREE.Mesh(new THREE.SphereGeometry(0.4), mats.bone); osteoR.position.set(0.6, 0, -0.5);
+                vGroup.add(osteoL, osteoR);
+            }
+
+            const lam = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.6, 0.3), mats.bone); lam.position.set(0, 0, -0.8);
+            const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1.8).rotateX(-Math.PI/2+0.2), mats.bone); sp.position.set(0, -0.3, -1.6);
+            const tpL = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 2.5).rotateZ(Math.PI/2), mats.bone); tpL.position.set(-1.2, 0, -0.6); tpL.rotation.y = -0.3;
+            const tpR = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 2.5).rotateZ(Math.PI/2), mats.bone); tpR.position.set(1.2, 0, -0.6); tpR.rotation.y = 0.3;
+            
+            vGroup.add(pedL, pedR, lam, sp, tpL, tpR);
+            return vGroup;
+        }
+
+        function generateSpine() {
+            animatedMeshes = [];
+            const group = new THREE.Group();
+            const segments = 4; const startY = 3.5; const spacing = 2.4;
+
+            const boneGroup = new THREE.Group(); boneGroup.userData.layer = 'bone';
+            const tissueGroup = new THREE.Group(); tissueGroup.userData.layer = 'tissue';
+            const pathGroup = new THREE.Group(); pathGroup.userData.layer = 'pathology';
+
+            // Médula espinal: GLB real o cilindro procedural como fallback
+            let cord;
+            if(spinalCordGLB) {
+                cord = spinalCordGLB.clone();
+                cord.traverse(child => {
+                    if(!child.isMesh) return;
+                    child.material = mats.nerve.clone();
+                    child.castShadow = true; child.receiveShadow = true;
+                    child.userData.layer = 'tissue';
+                });
+                // La normalización ya centró el modelo; lo reposicionamos
+                // al centro del stack de vértebras procedurales
+                cord.position.set(0, startY - ((segments-1)*spacing)/2, -0.4);
+            } else {
+                cord = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, segments*spacing+1, 32), mats.nerve);
+                cord.position.set(0, startY - ((segments-1)*spacing)/2, -0.4);
+                cord.userData.layer = 'tissue';
+            }
+            tissueGroup.add(cord);
+
+            for(let i=0; i<segments; i++) {
+                let y = startY - (i*spacing);
+                let z = 0;
+                
+                let isBurst = (currentPathology === 'burst' && i === 1);
+                let isWedge = (currentPathology === 'wedge' && i === 1);
+                let isStenosis = (currentPathology === 'stenosis' && i === 1);
+                
+                if (currentPathology === 'listesis' && i >= 1) { z += 0.8; y -= 0.3; } // Deslizamiento
+                if (isWedge || isBurst) y -= 0.5; // Ajuste por colapso
+                
+                const vert = createAnatomicVertebra(isWedge, isBurst, isStenosis);
+                vert.position.set(0, y, z);
+                boneGroup.add(vert);
+
+                // Nervios Netter
+                if(i < segments-1) {
+                    const nGroup = new THREE.Group();
+                    const nL = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.5).rotateZ(Math.PI/2), mats.nerve); nL.position.set(-1.6, 0, 0); nL.rotation.y = 0.3;
+                    const nR = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.5).rotateZ(Math.PI/2), mats.nerve); nR.position.set(1.6, 0, 0); nR.rotation.y = -0.3;
+                    nGroup.add(nL, nR); nGroup.position.set(0, y - spacing/2 + 0.3, z - 0.3);
+                    tissueGroup.add(nGroup);
+                }
+
+                // Discos
+                if(i < segments-1) {
+                    const discGeo = new THREE.CylinderGeometry(1.55, 1.55, 0.4, 32); discGeo.scale(1.2, 1, 0.9);
+                    const dp = discGeo.attributes.position;
+                    for(let j=0; j<dp.count; j++) if(dp.getZ(j) < 0 && Math.abs(dp.getX(j)) < 1.0) dp.setZ(j, dp.getZ(j) + 0.4);
+                    discGeo.computeVertexNormals();
+                    const disc = new THREE.Mesh(discGeo, mats.disc);
+                    disc.position.set(0, y - spacing/2, z + 0.6);
+                    if(isBurst) disc.visible = false;
+                    boneGroup.add(disc);
+
+                    if(currentPathology === 'hernia' && i===1) {
+                        const hernia = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), mats.hernia);
+                        hernia.scale.set(1.5, 0.5, 1.5); hernia.position.set(-0.8, y - spacing/2, z); hernia.rotation.y = 0.5;
+                        animatedMeshes.push({mesh: hernia, type: 'glow'});
+                        pathGroup.add(hernia);
+                    }
+                }
+            }
+
+            group.add(boneGroup, tissueGroup, pathGroup);
+            group.position.y = -1;
+            return group;
+        }
+
+        // --- GENERADOR (VIAJE PACIENTE - 6 Etapas Hiperdetalladas) ---
+        function generateJourney() {
+            const group = new THREE.Group();
+            
+            // Materiales de Entorno
+            const mFloor = new THREE.MeshPhysicalMaterial({color: 0x1f2937, roughness: 0.8});
+            const mMetal = new THREE.MeshPhysicalMaterial({color: 0xcccccc, metalness: 0.9, roughness: 0.2});
+            const mDarkMetal = new THREE.MeshPhysicalMaterial({color: 0x444444, metalness: 0.7, roughness: 0.5});
+            const mCloth = new THREE.MeshPhysicalMaterial({color: 0x3b82f6, roughness: 0.9}); 
+            const mWhite = new THREE.MeshPhysicalMaterial({color: 0xf3f4f6, roughness: 0.5});
+            const mWood = new THREE.MeshPhysicalMaterial({color: 0x8b5a2b, roughness: 0.8});
+            const mGlass = new THREE.MeshPhysicalMaterial({color: 0x88ccff, transparent: true, opacity: 0.3, transmission: 0.9, roughness: 0.1});
+            const mPlant = new THREE.MeshPhysicalMaterial({color: 0x228b22, roughness: 0.8});
+            const mScreenBase = new THREE.MeshPhysicalMaterial({color: 0x111111});
+
+            // Suelo común
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), mFloor);
+            floor.rotation.x = -Math.PI/2; floor.position.y = -2; group.add(floor);
+
+            // Helpers de Objetos Comunes
+            const createBed = () => {
+                const bGroup = new THREE.Group();
+                const frame = new THREE.Mesh(new THREE.BoxGeometry(3, 0.5, 6), mMetal); frame.position.y = -0.5;
+                const matt = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.4, 5.8), mWhite); matt.position.y = 0;
+                const sheet = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.45, 4), mCloth); sheet.position.set(0, 0.05, -0.9);
+                const pillow = new THREE.Mesh(new THREE.BoxGeometry(2, 0.2, 1.2), mWhite); pillow.position.set(0, 0.3, 2.2);
+                const railingL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 4), mMetal); railingL.position.set(-1.5, 0, 0);
+                const railingR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 4), mMetal); railingR.position.set(1.5, 0, 0);
+                bGroup.add(frame, matt, sheet, pillow, railingL, railingR);
+                bGroup.position.y = -1;
+                return bGroup;
+            };
+
+            const createIVPole = () => {
+                const ivGroup = new THREE.Group();
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.1), mDarkMetal); base.position.y = -1.95;
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 5), mMetal); pole.position.y = 0.5;
+                const hook = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.05), mMetal); hook.position.y = 2.8;
+                const bag1 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.5), mGlass); bag1.position.set(0.3, 2.4, 0);
+                const bag2 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.4), mWhite); bag2.position.set(-0.3, 2.4, 0);
+                ivGroup.add(base, pole, hook, bag1, bag2);
+                return ivGroup;
+            };
+
+            const createMonitor = (screenColor, addPulse) => {
+                const mGroup = new THREE.Group();
+                const base = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.4), mDarkMetal);
+                const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), mDarkMetal); stand.position.y = 0.3;
+                const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.15), mScreenBase); box.position.y = 0.6;
+                const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.7), new THREE.MeshBasicMaterial({color: screenColor})); 
+                screen.position.set(0, 0.6, 0.08);
+                mGroup.add(base, stand, box, screen);
+                if (addPulse) animatedMeshes.push({mesh: screen, type: 'ecg'});
+                return mGroup;
+            };
+
+            const createChair = () => {
+                const cGroup = new THREE.Group();
+                const seat = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1), mDarkMetal); seat.position.y = -1;
+                const back = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.1), mDarkMetal); back.position.set(0, -0.5, -0.45);
+                const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1), mMetal); leg1.position.set(-0.4, -1.5, -0.4);
+                const leg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1), mMetal); leg2.position.set(0.4, -1.5, -0.4);
+                const leg3 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1), mMetal); leg3.position.set(-0.4, -1.5, 0.4);
+                const leg4 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1), mMetal); leg4.position.set(0.4, -1.5, 0.4);
+                cGroup.add(seat, back, leg1, leg2, leg3, leg4);
+                return cGroup;
+            };
+
+            // --- ESCENAS ---
+            if (currentPathology === 'admission') {
+                group.add(createBed());
+                
+                // Mostrador / Escritorio
+                const desk = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 1.5), mWood); desk.position.set(-4, -1.25, 0);
+                const pc = createMonitor(0x4488ff, false); pc.position.set(-4, -0.5, 0); pc.rotation.y = Math.PI/4;
+                const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.3), mDarkMetal); keyboard.position.set(-3.5, -0.45, 0.4);
+                group.add(desk, pc, keyboard);
+
+                // Sillas de espera
+                const chair1 = createChair(); chair1.position.set(4, 0, 2); chair1.rotation.y = -Math.PI/2;
+                const chair2 = createChair(); chair2.position.set(4, 0, 0); chair2.rotation.y = -Math.PI/2;
+                const chair3 = createChair(); chair3.position.set(4, 0, -2); chair3.rotation.y = -Math.PI/2;
+                group.add(chair1, chair2, chair3);
+
+                // Planta decorativa
+                const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 0.8), mWhite); pot.position.set(-5, -1.6, -3);
+                const plant = new THREE.Mesh(new THREE.DodecahedronGeometry(0.6, 1), mPlant); plant.position.set(-5, -0.8, -3);
+                group.add(pot, plant);
+                
+                const ivPole = createIVPole(); ivPole.position.set(-2, 0, 2); group.add(ivPole);
+            } 
+            else if (currentPathology === 'mri') {
+                const bed = createBed(); bed.scale.set(0.8, 1, 0.8); bed.position.set(0, -1, 3);
+                
+                // Antena de cabeza RMN (Head Coil)
+                const coil = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.1, 16, 32, Math.PI), mWhite);
+                coil.position.set(0, 0.2, 2.2); coil.rotation.x = Math.PI/2;
+                bed.add(coil);
+                
+                // Escáner RMN Principal
+                const scannerGrp = new THREE.Group();
+                const scannerBody = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 4, 32), mWhite);
+                scannerBody.rotation.x = Math.PI/2; scannerBody.position.set(0, 0, -2);
+                const scannerHole = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 4.1, 32), new THREE.MeshBasicMaterial({color:0x000000}));
+                scannerHole.rotation.x = Math.PI/2; scannerHole.position.set(0, 0, -2);
+                const scannerRing = new THREE.Mesh(new THREE.TorusGeometry(3.5, 0.2, 16, 32), mMetal);
+                scannerRing.position.set(0, 0, 0);
+                scannerGrp.add(scannerBody, scannerHole, scannerRing);
+
+                // Sala de Control (Cristal)
+                const glassWall = new THREE.Mesh(new THREE.BoxGeometry(10, 5, 0.1), mGlass); glassWall.position.set(-6, 0.5, 0); glassWall.rotation.y = Math.PI/2;
+                const controlDesk = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 4), mWood); controlDesk.position.set(-8, -1.4, 0);
+                const monitor1 = createMonitor(0x333333, false); monitor1.position.set(-8, -0.8, -1); monitor1.rotation.y = Math.PI/2;
+                const monitor2 = createMonitor(0x00ff00, false); monitor2.position.set(-8, -0.8, 1); monitor2.rotation.y = Math.PI/2;
+                
+                group.add(bed, scannerGrp, glassWall, controlDesk, monitor1, monitor2);
+            }
+            else if (currentPathology === 'surgery') {
+                const bed = createBed(); bed.scale.set(0.8, 0.9, 0.8); group.add(bed);
+                
+                // Luces de Quirófano Avanzadas
+                const lampGroup = new THREE.Group();
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 3), mMetal); pole.position.y = 4;
+                const dome = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.2, 32), mWhite); dome.position.y = 2.5;
+                const bulb1 = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color: 0xffffff})); bulb1.position.set(1, 2.4, 0);
+                const bulb2 = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color: 0xffffff})); bulb2.position.set(-1, 2.4, 0);
+                const bulb3 = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color: 0xffffff})); bulb3.position.set(0, 2.4, 1);
+                lampGroup.add(pole, dome, bulb1, bulb2, bulb3); group.add(lampGroup);
+
+                // Máquina de Anestesia
+                const anesGroup = new THREE.Group();
+                const aBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 1.5), mWhite); aBody.position.y = -1;
+                const aMon = createMonitor(0x00aaff, false); aMon.position.y = 0;
+                const bellows = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.8, 16), mGlass); bellows.position.set(0, 0.4, 0.8);
+                anesGroup.add(aBody, aMon, bellows); anesGroup.position.set(-3, 0, -2); group.add(anesGroup);
+
+                // Mesa de Mayo (Instrumental)
+                const mayoGrp = new THREE.Group();
+                const mBase = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1), mMetal); mBase.position.y = -1.95;
+                const mPole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2), mMetal); mPole.position.y = -1;
+                const mTray = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 1), mMetal); mTray.position.y = 0;
+                // Instrumentos (cajitas)
+                const tool1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.4), mDarkMetal); tool1.position.set(0.3, 0.04, 0);
+                const tool2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.3), mDarkMetal); tool2.position.set(-0.3, 0.04, 0);
+                mayoGrp.add(mBase, mPole, mTray, tool1, tool2); mayoGrp.position.set(3, 0, 1); group.add(mayoGrp);
+                
+                const ivPole = createIVPole(); ivPole.position.set(2, 0, -2); group.add(ivPole);
+            } 
+            else if (currentPathology === 'recovery') {
+                group.add(createBed());
+                
+                // Cortinas de Privacidad
+                const curtainL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 4, 8), mCloth); curtainL.position.set(-4, 0, 0); curtainL.material.transparent = true; curtainL.material.opacity = 0.8;
+                const curtainR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 4, 8), mCloth); curtainR.position.set(4, 0, 0); curtainR.material.transparent = true; curtainR.material.opacity = 0.8;
+                group.add(curtainL, curtainR);
+
+                // Monitor Vital y Bombas de infusión
+                const vitals = new THREE.Group();
+                const vStand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4), mMetal); vStand.position.y = 0;
+                const ecg = createMonitor(0x00ff00, true); ecg.position.set(0, 1.5, 0);
+                const pump1 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 0.3), mWhite); pump1.position.set(0, 0.5, 0.2);
+                const pump2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 0.3), mWhite); pump2.position.set(0, -0.2, 0.2);
+                vitals.add(vStand, ecg, pump1, pump2); vitals.position.set(-2, 0, 2); vitals.rotation.y = Math.PI/4;
+                group.add(vitals);
+
+                // Mesa de noche
+                const nTable = new THREE.Mesh(new THREE.BoxGeometry(1, 1.2, 1), mWood); nTable.position.set(2, -1.4, 2);
+                const glassWater = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.3), mGlass); glassWater.position.set(2, -0.65, 2);
+                group.add(nTable, glassWater);
+            }
+            else if (currentPathology === 'rehab') {
+                // Barras paralelas
+                const barsGroup = new THREE.Group();
+                const barL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 6).rotateX(Math.PI/2), mMetal); barL.position.set(-1, 0, 0);
+                const barR = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 6).rotateX(Math.PI/2), mMetal); barR.position.set(1, 0, 0);
+                const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2), mMetal); leg1.position.set(-1, -1, -2.5);
+                const leg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2), mMetal); leg2.position.set(-1, -1, 2.5);
+                const leg3 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2), mMetal); leg3.position.set(1, -1, -2.5);
+                const leg4 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2), mMetal); leg4.position.set(1, -1, 2.5);
+                barsGroup.add(barL, barR, leg1, leg2, leg3, leg4); barsGroup.position.set(0, 0, -1);
+                group.add(barsGroup);
+
+                // Balón Terapéutico (Yoga ball)
+                const ball = new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32), new THREE.MeshPhysicalMaterial({color: 0xff4444, roughness: 0.2, clearcoat: 0.5}));
+                ball.position.set(-4, -0.8, 2); group.add(ball);
+
+                // Escaleras de terapia
+                const stepsGrp = new THREE.Group();
+                const step1 = new THREE.Mesh(new THREE.BoxGeometry(2, 0.4, 1), mWood); step1.position.set(0, -1.8, 0);
+                const step2 = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 1), mWood); step2.position.set(0, -1.6, -1);
+                const step3 = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 1), mWood); step3.position.set(0, -1.4, -2);
+                stepsGrp.add(step1, step2, step3); stepsGrp.position.set(4, 0, 2); stepsGrp.rotation.y = -Math.PI/2;
+                group.add(stepsGrp);
+
+                // Espejo de pared
+                const mirror = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 0.1), new THREE.MeshPhysicalMaterial({color: 0xeeeeee, metalness: 1.0, roughness: 0.0}));
+                mirror.position.set(0, 0.5, -4.5); group.add(mirror);
+            }
+            else if (currentPathology === 'discharge') {
+                // Puerta y Marco
+                const doorGrp = new THREE.Group();
+                const frameL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4.2, 0.4), mMetal); frameL.position.set(-2, 0, 0);
+                const frameR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4.2, 0.4), mMetal); frameR.position.set(2, 0, 0);
+                const frameT = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.2, 0.4), mMetal); frameT.position.set(0, 2, 0);
+                const door = new THREE.Mesh(new THREE.BoxGeometry(3.8, 4, 0.1), mWood); door.position.set(0, 0, 0);
+                const sign = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 0.1), new THREE.MeshBasicMaterial({color: 0x00aa00})); sign.position.set(0, 2.5, 0); // Cartel EXIT
+                doorGrp.add(frameL, frameR, frameT, door, sign); doorGrp.position.set(0, 0.1, -4); group.add(doorGrp);
+
+                // Mostrador Recepción
+                const desk = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 1.5), mWhite); desk.position.set(-4, -1.25, 0);
+                const pc = createMonitor(0x333333, false); pc.position.set(-4, -0.5, 0); pc.rotation.y = Math.PI/4;
+                group.add(desk, pc);
+
+                // Silla de Ruedas
+                const wcGrp = new THREE.Group();
+                const wL = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.05, 16, 32), mDarkMetal); wL.position.set(-0.8, -1.4, 2); wL.rotation.y = Math.PI/2;
+                const wR = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.05, 16, 32), mDarkMetal); wR.position.set(0.8, -1.4, 2); wR.rotation.y = Math.PI/2;
+                const wSeat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.1, 1.2), mDarkMetal); wSeat.position.set(0, -1, 2);
+                const wBack = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.2, 0.1), mDarkMetal); wBack.position.set(0, -0.4, 1.4);
+                wcGrp.add(wL, wR, wSeat, wBack); wcGrp.rotation.y = -Math.PI/4; group.add(wcGrp);
+                
+                // Plantas
+                const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 0.8), mWhite); pot.position.set(4, -1.6, -3);
+                const plant = new THREE.Mesh(new THREE.DodecahedronGeometry(0.8, 1), mPlant); plant.position.set(4, -0.8, -3);
+                group.add(pot, plant);
+            }
+
+            // Aplicar sombra a todos los meshes y evadir filtro de capa poniéndolos todos en 'bone' para este modulo especial
+            group.traverse(c => { 
+                if(c.isMesh) { 
+                    c.userData.layer = 'bone'; 
+                    c.castShadow = true; 
+                    c.receiveShadow = true; 
+                } 
+            });
+            return group;
+        }
+
+        // --- LÓGICA DE UI Y CONTROL ---
+        function buildUI() {
+            const container = document.getElementById('layer-controls');
+            container.innerHTML = '<h2 class="text-[10px] md:text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1 hidden md:block"><i class="fa-solid fa-layer-group mr-2"></i> Sistemas</h2>';
+            systemLayers.forEach(layer => {
+                const btn = document.createElement('button');
+                btn.className = `layer-btn w-full flex items-center gap-3 p-2 md:p-3 rounded-xl text-left ${layer.active ? 'active' : ''}`;
+                btn.innerHTML = `<div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background-color: ${layer.color}20; color: ${layer.color}"><i class="fa-solid ${layer.icon}"></i></div><span class="text-[10px] md:text-sm font-medium text-zinc-300 hidden md:block">${layer.name}</span>`;
+                btn.onclick = () => {
+                    layer.active = !layer.active;
+                    layer.active ? btn.classList.add('active') : btn.classList.remove('active');
+                    activeAnatomyGroup.traverse(child => { if (child.userData.layer === layer.id) child.visible = layer.active; });
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`mode-${mode}`).classList.add('active');
+
+            const clinicalPanel = document.getElementById('clinical-panel');
+            const expertData = document.getElementById('expert-data');
+            
+            if(currentAnatomy === 'brain') {
+                const tMat = (mode === 'experto') ? mats.tissueExpert : mats.tissue;
+                // Actualizar material en meshes de tejido (tanto GLB como procedural)
+                activeAnatomyGroup.traverse(c => {
+                    if(c.isMesh && c.userData && c.userData.layer === 'tissue') {
+                        c.material = tMat.clone();
+                    }
+                });
+            }
+
+            if(mode === 'estudiante' || mode === 'experto') {
+                clinicalPanel.classList.add('hidden');
+                update3DLabels(); 
+            } else if (mode === 'diagnostico') {
+                clinicalPanel.classList.remove('hidden');
+                expertData.classList.remove('hidden');
+                clearLabels(); 
+                
+                if(currentPathology === 'normal' && currentAnatomy !== 'journey') {
+                    const paths = pathologies[currentAnatomy];
+                    if(paths.length > 1) setPathology(paths[1].id);
+                }
+            }
+        }
+
+        function setAnatomy(anatomyStr) {
+            currentAnatomy = anatomyStr;
+            currentPathology = 'normal'; 
+            
+            document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`mod-${anatomyStr}`).classList.add('active');
+
+            const pathContainer = document.getElementById('patho-buttons');
+            pathContainer.innerHTML = '';
+            pathologies[anatomyStr].forEach(p => {
+                const btn = document.createElement('button');
+                btn.className = `path-btn w-full p-2 text-left text-xs rounded border border-zinc-700 hover:bg-zinc-800 transition-colors ${p.id==='normal'?'bg-zinc-800 border-zinc-500 text-white':'text-zinc-400'}`;
+                btn.innerText = p.name;
+                btn.id = `path-${p.id}`;
+                btn.onclick = () => setPathology(p.id);
+                pathContainer.appendChild(btn);
+            });
+
+            isMobile = window.innerWidth <= 640;
+            if(anatomyStr === 'brain') {
+                camera.position.set(0, isMobile?6:3, isMobile?18:12);
+                controls.target.set(0, 0.5, 0);
+            } else if (anatomyStr === 'spine') {
+                camera.position.set(isMobile?0:3, isMobile?3:1, isMobile?22:12);
+                controls.target.set(0, 0, 0);
+            } else {
+                camera.position.set(12, 8, 12);
+                controls.target.set(0, 0, 0);
+                if(currentMode === 'diagnostico') setPathology('admission'); 
+            }
+            controls.update();
+
+            updateModel();
+        }
+
+        function setPathology(pathId) {
+            currentPathology = pathId;
+            document.querySelectorAll('.path-btn').forEach(b => {
+                b.classList.remove('bg-zinc-800', 'border-red-500', 'text-white');
+                b.classList.add('text-zinc-400', 'border-zinc-700');
+            });
+            const active = document.getElementById(`path-${pathId}`);
+            if(active) {
+                active.classList.remove('text-zinc-400', 'border-zinc-700');
+                active.classList.add('bg-zinc-800', pathId==='normal'?'border-zinc-500':'border-red-500', 'text-white');
+            }
+
+            const desc = document.getElementById('patho-desc');
+            desc.innerText = descriptions[pathId] || "Etapa del viaje del paciente seleccionada.";
+
+            updateModel();
+        }
+
+        function updateModel() {
+            scene.remove(activeAnatomyGroup);
+            if (currentAnatomy === 'brain') activeAnatomyGroup = generateBrain();
+            else if (currentAnatomy === 'spine') activeAnatomyGroup = generateSpine();
+            else activeAnatomyGroup = generateJourney();
+            
+            scene.add(activeAnatomyGroup);
+
+            systemLayers.forEach(l => {
+                activeAnatomyGroup.traverse(c => { if(c.userData && c.userData.layer === l.id) c.visible = l.active; });
+            });
+
+            if(currentMode !== 'diagnostico') update3DLabels();
+            else clearLabels();
+        }
+
+        // --- SISTEMA DE ETIQUETAS 3D -> 2D ---
+        function clearLabels() {
+            document.getElementById('labels-container').innerHTML = '';
+            htmlLabels = [];
+        }
+
+        function update3DLabels() {
+            clearLabels();
+            if(currentAnatomy === 'journey') return; 
+            
+            const container = document.getElementById('labels-container');
+            const data = labelsData[currentAnatomy];
+            
+            data.forEach((lbl, index) => {
+                const el = document.createElement('div');
+                el.className = 'anatomical-label';
+                el.innerText = currentMode === 'experto' ? lbl.nameExperto : lbl.nameEstudiante;
+                if(currentMode === 'experto') el.style.fontStyle = 'italic';
+                container.appendChild(el);
+                
+                let px = lbl.pos[0];
+                if(currentAnatomy === 'brain' && (currentPathology==='tumor' || currentPathology==='hematoma')) px += 0.3;
+
+                htmlLabels.push({ element: el, pos3D: new THREE.Vector3(px, lbl.pos[1], lbl.pos[2]) });
+            });
+        }
+
+        function updateLabelPositions() {
+            const W = renderer.domElement.clientWidth  || window.innerWidth;
+            const H = renderer.domElement.clientHeight || window.innerHeight;
+            htmlLabels.forEach(lbl => {
+                const vector = lbl.pos3D.clone();
+                vector.project(camera);
+
+                const x = (vector.x * .5 + .5) * W;
+                const y = (vector.y * -.5 + .5) * H;
+
+                if(vector.z > 1) {
+                    lbl.element.style.opacity = '0';
+                } else {
+                    lbl.element.style.opacity = '1';
+                    lbl.element.style.left = `${x}px`;
+                    lbl.element.style.top = `${y - 20}px`;
+                }
+            });
+        }
+
+        // --- BUCLE DE RENDERIZADO ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            animatedMeshes.forEach(item => {
+                if(!item.mesh.visible) return;
+                
+                if(item.type === 'pulse') { 
+                    const s = 1 + Math.sin(time * 8) * 0.15;
+                    item.mesh.scale.set(s,s,s);
+                } else if (item.type === 'breath') { 
+                    item.mesh.rotation.y += 0.005;
+                    const s = 1 + Math.sin(time * 2) * 0.02;
+                    item.mesh.scale.set(s,s,s);
+                } else if (item.type === 'glow') { 
+                    item.mesh.material.emissiveIntensity = 0.5 + Math.sin(time * 5) * 0.5;
+                } else if (item.type === 'ecg') { 
+                    const color = Math.sin(time*10) > 0.8 ? 0xffffff : 0x00ff00;
+                    item.mesh.material.color.setHex(color);
+                }
+            });
+
+            if(htmlLabels.length > 0) updateLabelPositions();
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = initEngine;
+    </script>
+</body>
+</html>
