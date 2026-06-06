@@ -119,6 +119,9 @@
                         <button onclick="setAnatomy('journey')" id="mod-journey" class="module-btn bg-zinc-800 hover:bg-zinc-700 p-2 md:p-3 rounded-xl flex items-center justify-center md:justify-start gap-3">
                             <i class="fa-solid fa-hospital-user text-lg"></i><span class="text-sm font-semibold hidden md:block">Viaje Paciente</span>
                         </button>
+                        <button onclick="setAnatomy('ao')" id="mod-ao" class="module-btn bg-zinc-800 hover:bg-zinc-700 p-2 md:p-3 rounded-xl flex items-center justify-center md:justify-start gap-3">
+                            <i class="fa-solid fa-layer-group text-lg text-amber-400"></i><span class="text-sm font-semibold hidden md:block text-amber-300">AO Fracturas</span>
+                        </button>
                     </div>
                 </div>
 
@@ -192,6 +195,18 @@
                 { id: 'recovery', name: '4. Cuidados Intensivos (UCI)' },
                 { id: 'rehab', name: '5. Fisioterapia y Rehabilitación' },
                 { id: 'discharge', name: '6. Alta Médica' }
+            ],
+            // ── Clasificación AO Spine (Vaccaro et al., 2016) ────────────────────
+            ao: [
+                { id: 'ao-normal', name: 'Columna Normal' },
+                { id: 'ao-a1',  name: 'Tipo A1 — Cuña (Wedge)' },
+                { id: 'ao-a2',  name: 'Tipo A2 — Split / Pinza' },
+                { id: 'ao-a3',  name: 'Tipo A3 — Burst Incompleto' },
+                { id: 'ao-a4',  name: 'Tipo A4 — Burst Completo' },
+                { id: 'ao-b1',  name: 'Tipo B1 — Fx. Ósea Posterior' },
+                { id: 'ao-b2',  name: 'Tipo B2 — Lesión Ligamentosa' },
+                { id: 'ao-b3',  name: 'Tipo B3 — Hiperextensión' },
+                { id: 'ao-c',   name: 'Tipo C — Traslación / Luxación' }
             ]
         };
 
@@ -210,6 +225,17 @@
             wedge: "Colapso de la porción anterior del cuerpo vertebral, dándole forma de cuña. Muy común en pacientes con osteoporosis avanzada.",
             burst: "Traumatismo axial severo. El cuerpo vertebral se fragmenta y la retropulsión ósea (esquirlas) invade el canal medular, amenazando la médula espinal.",
             
+            // ── Clasificación AO Spine ──────────────────────────────────────────
+            'ao-a1':  "TIPO A1 — Fractura en cuña (Wedge). Compresión de un platillo vertebral con deformidad unilateral. La cortical posterior está íntegra. Sin compromiso neurológico en la mayoría de casos. Manejo: conservador si ángulo cifótico < 25°.",
+            'ao-a2':  "TIPO A2 — Fractura Split / Pinza. El cuerpo vertebral se cliva en el plano coronal (split) o sagital (pincer) sin afectar el muro posterior. Mecanismo: compresión axial con componente rotacional. Puede requerir cirugía si hay inestabilidad.",
+            'ao-a3':  "TIPO A3 — Burst incompleto. Un platillo + muro posterior comprometidos con fragmento intracanal. Mayor riesgo neurológico por retropulsión. El ligamento longitudinal posterior generalmente íntegro. Score TLICS ≥ 4 → cirugía.",
+            'ao-a4':  "TIPO A4 — Burst completo. Ambos platillos y muro posterior fragmentados con retropulsión significativa al canal medular. Alta mortalidad neurológica. TLICS ≥ 5. Requiere instrumentación posterior y/o corpectomía según compromiso neurológico.",
+            'ao-b1':  "TIPO B1 — Lesión de la banda de tensión posterior de tipo óseo (fractura transfixiante). Involucra proceso espinoso, lámina y/o masa articular. Monossegmental. Inestabilidad moderada; puede tratarse con fijación posterior si hay desplazamiento.",
+            'ao-b2':  "TIPO B2 — Rotura ligamentosa de la banda de tensión posterior. Complejo ligamentario posterior (CLP) comprometido: ligamentos supraespinoso, interespinoso, facetario. Radiológicamente sutil. RM obligatoria. Alta inestabilidad; manejo quirúrgico recomendado.",
+            'ao-b3':  "TIPO B3 — Lesión anterior por hiperextensión. Disruption del disco anterior y/o plataforma anterior sin compromiso del CLP. Frecuente en columna rígida (espondilitis anquilosante, DISH). Anterolistesis. Puede requerir fusión anterior.",
+            'ao-c':   "TIPO C — Lesión traslacional / luxación. Desplazamiento en cualquier plano (sagital, coronal, axial) con pérdida completa de la continuidad entre las columnas. Máxima inestabilidad. Alta tasa de lesión neurológica completa (ASIA A). Cirugía urgente: reducción + artrodesis.",
+            'ao-normal': "Columna lumbosacra normal. Se visualizan los cuerpos vertebrales, discos intervertebrales, canal medular y raíces nerviosas en anatomía normal. Referencia para comparar con los patrones de fractura AO/Spine.",
+
             // Viaje
             admission: "El paciente llega al centro. Se realizan las primeras evaluaciones neurológicas, estabilización de signos vitales y preparación preoperatoria.",
             mri: "Se obtienen imágenes detalladas del cerebro o columna utilizando potentes campos magnéticos para planificar la cirugía con precisión milimétrica.",
@@ -235,6 +261,12 @@
                 { pos: [0, 1.2, -0.4], nameEstudiante: 'Médula Espinal', nameExperto: 'Medulla spinalis' },
                 { pos: [-1.2, 1.0, -0.3], nameEstudiante: 'Raíz Nerviosa', nameExperto: 'Radix nervi spinalis' },
                 { pos: [0, 1.5, -1.6], nameEstudiante: 'Apófisis Espinosa', nameExperto: 'Processus spinosus' }
+            ],
+            ao: [
+                { pos: [ 2.4,  0.0,  1.0], nameEstudiante: 'Vértebra Lesionada',   nameExperto: 'Vertebra traumatica' },
+                { pos: [-2.8,  0.0, -0.4], nameEstudiante: 'Canal Medular',         nameExperto: 'Canalis vertebralis' },
+                { pos: [ 2.4,  3.0,  0.6], nameEstudiante: 'Nivel Superior',        nameExperto: 'Segmentum craniale' },
+                { pos: [ 2.4, -3.0,  0.6], nameEstudiante: 'Nivel Inferior',        nameExperto: 'Segmentum caudale' },
             ]
         };
 
@@ -655,6 +687,209 @@
             return group;
         }
 
+        // --- GENERADOR AO FRACTURAS COLUMNA ---
+        function generateAOSpine() {
+            animatedMeshes = [];
+            const group = new THREE.Group();
+
+            // Materiales específicos del módulo AO
+            const matFracture = new THREE.MeshPhysicalMaterial({ color: 0xff3333, roughness: 0.7, emissive: 0x220000 });
+            const matLigament = new THREE.MeshPhysicalMaterial({ color: 0xffcc00, roughness: 0.8, emissive: 0x221100 });
+
+            const SPACING = 3.0;  // distancia entre centros de vértebras
+
+            // --- Helper: vértebra completa (cuerpo + arco posterior) ---
+            function buildNormalVert(y, boneMat) {
+                const v = new THREE.Group(); v.userData.layer = 'bone';
+                const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 1.6), boneMat);
+                body.position.set(0, 0, 0.2); body.castShadow = true; v.add(body);
+                const pedL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), boneMat);
+                pedL.position.set(-0.8, 0, -0.5);
+                const pedR = pedL.clone(); pedR.position.set(0.8, 0, -0.5);
+                const lam = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), boneMat);
+                lam.position.set(0, 0, -1.1);
+                const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.4).rotateX(-Math.PI/2 + 0.2), boneMat);
+                sp.position.set(0, -0.2, -1.7);
+                const tpL = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 2.2).rotateZ(Math.PI/2), boneMat);
+                tpL.position.set(-1.4, 0, -0.5); tpL.rotation.y = -0.3;
+                const tpR = tpL.clone(); tpR.position.set(1.4, 0, -0.5); tpR.rotation.y = 0.3;
+                v.add(pedL, pedR, lam, sp, tpL, tpR);
+                v.position.y = y; return v;
+            }
+
+            // --- Helper: disco intervertebral ---
+            function buildDisc(y) {
+                const d = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.5, 32), mats.disc);
+                d.position.set(0, y, 0.2); d.userData.layer = 'bone'; d.castShadow = true; return d;
+            }
+
+            // Vértebras superior e inferior normales
+            group.add(buildNormalVert( SPACING, mats.bone));
+            group.add(buildNormalVert(-SPACING, mats.bone));
+            group.add(buildDisc( SPACING * 0.5 + 0.05));
+            group.add(buildDisc(-SPACING * 0.5 - 0.05));
+
+            // Médula espinal continua
+            const cord = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.32, 0.32, SPACING * 2 + 2.5, 32), mats.nerve
+            );
+            cord.position.set(0, 0, -0.5); cord.userData.layer = 'tissue'; group.add(cord);
+
+            // Raíces nerviosas en niveles superior e inferior
+            [SPACING - 0.4, -(SPACING - 0.4)].forEach(y => {
+                const nL = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.4).rotateZ(Math.PI/2), mats.nerve.clone());
+                nL.position.set(-1.6, y, 0); nL.rotation.y = 0.3; nL.userData.layer = 'tissue';
+                const nR = nL.clone(); nR.position.set(1.6, y, 0); nR.rotation.y = -0.3; nR.userData.layer = 'tissue';
+                group.add(nL, nR);
+            });
+
+            // --- Vértebra media: patrón fractura según currentPathology ---
+            const v = new THREE.Group(); v.userData.layer = 'bone';
+
+            if (currentPathology === 'ao-normal') {
+                // Columna normal — sin fractura
+                group.add(buildNormalVert(0, mats.bone));
+
+            } else if (currentPathology === 'ao-a1') {
+                // Tipo A1 — Fractura cuña: pérdida de altura anterior, platillo superior
+                const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 1.6), mats.bone.clone());
+                body.position.set(0, 0, 0.2); body.castShadow = true; v.add(body);
+                // Cuña: scale.x anterior comprimido con objeto auxiliar que la "cubre"
+                const wedgeFront = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.55, 1.7), mats.bone.clone());
+                wedgeFront.position.set(-0.5, 0.55, 0.2); wedgeFront.rotation.z = -0.35; v.add(wedgeFront);
+                // Línea de fractura en platillo superior
+                const crack = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.09, 1.7), matFracture);
+                crack.position.set(0, 0.78, 0.2); v.add(crack);
+                const pedL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), mats.bone); pedL.position.set(-0.8, 0, -0.5);
+                const pedR = pedL.clone(); pedR.position.set(0.8, 0, -0.5);
+                const lam = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), mats.bone); lam.position.set(0, 0, -1.1);
+                const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.4).rotateX(-Math.PI/2+0.2), mats.bone); sp.position.set(0, -0.2, -1.7);
+                v.add(pedL, pedR, lam, sp);
+                group.add(v);
+
+            } else if (currentPathology === 'ao-a2') {
+                // Tipo A2 — Split / Pinza: cuerpo dividido en dos mitades separadas
+                const halfL = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.6, 1.6), mats.bone.clone());
+                halfL.position.set(-0.7, 0, 0.2); halfL.castShadow = true; v.add(halfL);
+                const halfR = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.6, 1.6), mats.bone.clone());
+                halfR.position.set(0.7, 0, 0.2); halfR.castShadow = true; v.add(halfR);
+                const gap = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.8, 1.8), matFracture);
+                gap.position.set(0, 0, 0.2); v.add(gap);
+                const pedL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), mats.bone); pedL.position.set(-0.8, 0, -0.5);
+                const pedR = pedL.clone(); pedR.position.set(0.8, 0, -0.5);
+                const lam = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), mats.bone); lam.position.set(0, 0, -1.1);
+                const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.4).rotateX(-Math.PI/2+0.2), mats.bone); sp.position.set(0, -0.2, -1.7);
+                v.add(pedL, pedR, lam, sp);
+                group.add(v);
+
+            } else if (currentPathology === 'ao-a3') {
+                // Tipo A3 — Burst incompleto: un platillo + fragmento posterior al canal
+                const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.3, 1.6), mats.bone.clone());
+                body.position.set(0, -0.15, 0.2); body.castShadow = true; v.add(body);
+                const crack = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.09, 1.7), matFracture);
+                crack.position.set(0, 0.47, 0.2); v.add(crack);
+                // Fragmento retropulsado al canal
+                const frag = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.55), matFracture);
+                frag.position.set(0, 0.3, -0.35); frag.rotation.z = 0.3; frag.castShadow = true; v.add(frag);
+                const pedL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), mats.bone); pedL.position.set(-0.8, 0, -0.5);
+                const pedR = pedL.clone(); pedR.position.set(0.8, 0, -0.5);
+                const lam = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), mats.bone); lam.position.set(0, 0, -1.1);
+                const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.4).rotateX(-Math.PI/2+0.2), mats.bone); sp.position.set(0, -0.2, -1.7);
+                v.add(pedL, pedR, lam, sp);
+                group.add(v);
+
+            } else if (currentPathology === 'ao-a4') {
+                // Tipo A4 — Burst completo: ambos platillos + múltiples fragmentos
+                const center = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.85, 1.3), matFracture);
+                center.position.set(0, 0, 0.2); v.add(center);
+                const crackT = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.1, 1.8), matFracture); crackT.position.set(0, 0.52, 0.2); v.add(crackT);
+                const crackB = crackT.clone(); crackB.position.set(0, -0.52, 0.2); v.add(crackB);
+                [[-1.1, 0.4, 0.5], [1.1, 0.4, 0.3], [-0.5, -0.4, 0.8], [0.5, -0.4, 0.6], [0.0, 0.2, -0.35]].forEach(([x, y, z], i) => {
+                    const fr = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.4), matFracture);
+                    fr.position.set(x, y, z); fr.rotation.set(i*0.3, i*0.2, i*0.4); fr.castShadow = true; v.add(fr);
+                });
+                // Pedículos fracturados
+                const pedL2 = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), matFracture); pedL2.position.set(-0.8, 0.1, -0.5);
+                const pedR2 = pedL2.clone(); pedR2.position.set(0.8, 0.1, -0.5);
+                v.add(pedL2, pedR2);
+                group.add(v);
+
+            } else if (currentPathology === 'ao-b1') {
+                // Tipo B1 — Fractura ósea posterior: crack horizontal en pedículos y láminas
+                const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 1.6), mats.bone.clone());
+                body.position.set(0, 0, 0.2); body.castShadow = true; v.add(body);
+                const pedLb = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.4).rotateX(Math.PI/2), mats.bone); pedLb.position.set(-0.8, -0.15, -0.5); v.add(pedLb);
+                const pedRb = pedLb.clone(); pedRb.position.set(0.8, -0.15, -0.5); v.add(pedRb);
+                const pedLt = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.4).rotateX(Math.PI/2), mats.bone); pedLt.position.set(-0.8, 0.3, -0.5); v.add(pedLt);
+                const pedRt = pedLt.clone(); pedRt.position.set(0.8, 0.3, -0.5); v.add(pedRt);
+                // Línea horizontal de fractura
+                const hCrack = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.1, 1.1), matFracture); hCrack.position.set(0, 0.1, -0.5); v.add(hCrack);
+                const lamT = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), mats.bone); lamT.position.set(0, 0.35, -1.1); v.add(lamT);
+                const lamB = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), mats.bone); lamB.position.set(0, -0.1, -1.1); v.add(lamB);
+                const lamCrack = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 0.35), matFracture); lamCrack.position.set(0, 0.12, -1.1); v.add(lamCrack);
+                const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.4).rotateX(-Math.PI/2+0.2), mats.bone); sp.position.set(0, -0.2, -1.7); v.add(sp);
+                group.add(v);
+
+            } else if (currentPathology === 'ao-b2') {
+                // Tipo B2 — Lesión ligamentosa PLC: arco posterior subluxado + ligamentos rotos
+                const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 1.6), mats.bone.clone());
+                body.position.set(0, 0, 0.2); body.castShadow = true; v.add(body);
+                const pedL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), mats.bone); pedL.position.set(-0.8, 0, -0.5);
+                const pedR = pedL.clone(); pedR.position.set(0.8, 0, -0.5); v.add(pedL, pedR);
+                // Lámina subluxada (levantada)
+                const lam = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), mats.bone); lam.position.set(0, 0.55, -1.1); v.add(lam);
+                // Brecha ligamentosa (amarillo)
+                const ligGap = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.2, 0.35), matLigament); ligGap.position.set(0, 0.2, -1.1); v.add(ligGap);
+                // Residuos de ligamentos
+                [-0.6, 0.0, 0.6].forEach(x => {
+                    const lig = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.45, 8), matLigament);
+                    lig.position.set(x, 0.22, -1.1); lig.rotation.z = x * 0.35; v.add(lig);
+                });
+                const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.4).rotateX(-Math.PI/2+0.2), mats.bone); sp.position.set(0, 0.38, -1.7); v.add(sp);
+                group.add(v);
+
+            } else if (currentPathology === 'ao-b3') {
+                // Tipo B3 — Hiperextensión anterior: disrupción anterior (en DISH/EA)
+                const bodyPost = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.6, 1.6), mats.bone.clone());
+                bodyPost.position.set(0.5, 0, 0.2); bodyPost.castShadow = true; v.add(bodyPost);
+                // Fragmento anterior separado
+                const fragAnt = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.5, 1.5), matFracture);
+                fragAnt.position.set(-0.9, 0.18, 0.2); fragAnt.rotation.z = 0.15; fragAnt.castShadow = true; v.add(fragAnt);
+                // Gap discal anterior
+                const discGap = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.7, 1.7), matLigament);
+                discGap.position.set(-0.2, 0, 0.2); v.add(discGap);
+                const pedL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), mats.bone); pedL.position.set(-0.8, 0, -0.5);
+                const pedR = pedL.clone(); pedR.position.set(0.8, 0, -0.5);
+                const lam = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), mats.bone); lam.position.set(0, 0, -1.1);
+                const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.4).rotateX(-Math.PI/2+0.2), mats.bone); sp.position.set(0, -0.2, -1.7);
+                v.add(pedL, pedR, lam, sp);
+                group.add(v);
+
+            } else if (currentPathology === 'ao-c') {
+                // Tipo C — Traslación/Luxación: desplazamiento dramático lateral + anterior
+                const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 1.6), matFracture);
+                body.position.set(1.0, 0.3, 0.9); body.castShadow = true; v.add(body);
+                const endT = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 1.8), matFracture); endT.position.set(1.0, 1.1, 0.9); v.add(endT);
+                const endB = endT.clone(); endB.position.set(1.0, -0.5, 0.9); v.add(endB);
+                const pedL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.0).rotateX(Math.PI/2), matFracture); pedL.position.set(0.2, 0.3, -0.25);
+                const pedR = pedL.clone(); pedR.position.set(1.8, 0.3, -0.25);
+                const lam = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.3), matFracture); lam.position.set(1.0, 0.3, -0.85);
+                const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.4).rotateX(-Math.PI/2+0.2), matFracture); sp.position.set(1.0, 0.1, -1.5);
+                v.add(pedL, pedR, lam, sp);
+                // Indicador compresión medular
+                const squeeze = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 16), matFracture);
+                squeeze.position.set(0.3, 0.1, -0.4); squeeze.scale.set(1.6, 0.7, 0.7); v.add(squeeze);
+                group.add(v);
+
+            } else {
+                // Fallback — normal
+                group.add(buildNormalVert(0, mats.bone));
+            }
+
+            scene.add(group);
+            return group;
+        }
+
         // --- GENERADOR (VIAJE PACIENTE - 6 Etapas Hiperdetalladas) ---
         function generateJourney() {
             const group = new THREE.Group();
@@ -936,7 +1171,8 @@
                 expertData.classList.remove('hidden');
                 clearLabels(); 
                 
-                if(currentPathology === 'normal' && currentAnatomy !== 'journey') {
+                const normalPathId = pathologies[currentAnatomy] ? pathologies[currentAnatomy][0].id : 'normal';
+                if(currentPathology === normalPathId && currentAnatomy !== 'journey') {
                     const paths = pathologies[currentAnatomy];
                     if(paths.length > 1) setPathology(paths[1].id);
                 }
@@ -945,8 +1181,10 @@
 
         function setAnatomy(anatomyStr) {
             currentAnatomy = anatomyStr;
-            currentPathology = 'normal'; 
-            
+            // Usar el primer ID del módulo como "normal" (ej: 'normal' para brain/spine, 'ao-normal' para ao)
+            const defaultPathId = pathologies[anatomyStr][0].id;
+            currentPathology = defaultPathId;
+
             document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`mod-${anatomyStr}`).classList.add('active');
 
@@ -954,7 +1192,7 @@
             pathContainer.innerHTML = '';
             pathologies[anatomyStr].forEach(p => {
                 const btn = document.createElement('button');
-                btn.className = `path-btn w-full p-2 text-left text-xs rounded border border-zinc-700 hover:bg-zinc-800 transition-colors ${p.id==='normal'?'bg-zinc-800 border-zinc-500 text-white':'text-zinc-400'}`;
+                btn.className = `path-btn w-full p-2 text-left text-xs rounded border border-zinc-700 hover:bg-zinc-800 transition-colors ${p.id===defaultPathId?'bg-zinc-800 border-zinc-500 text-white':'text-zinc-400'}`;
                 btn.innerText = p.name;
                 btn.id = `path-${p.id}`;
                 btn.onclick = () => setPathology(p.id);
@@ -967,6 +1205,9 @@
                 controls.target.set(0, 0.5, 0);
             } else if (anatomyStr === 'spine') {
                 camera.position.set(isMobile?0:3, isMobile?3:1, isMobile?22:12);
+                controls.target.set(0, 0, 0);
+            } else if (anatomyStr === 'ao') {
+                camera.position.set(isMobile?0:8, isMobile?2:1, isMobile?20:12);
                 controls.target.set(0, 0, 0);
             } else {
                 camera.position.set(12, 8, 12);
@@ -987,7 +1228,8 @@
             const active = document.getElementById(`path-${pathId}`);
             if(active) {
                 active.classList.remove('text-zinc-400', 'border-zinc-700');
-                active.classList.add('bg-zinc-800', pathId==='normal'?'border-zinc-500':'border-red-500', 'text-white');
+                const normalPathId = pathologies[currentAnatomy][0].id;
+                active.classList.add('bg-zinc-800', pathId===normalPathId?'border-zinc-500':'border-red-500', 'text-white');
             }
 
             const desc = document.getElementById('patho-desc');
@@ -1000,6 +1242,7 @@
             scene.remove(activeAnatomyGroup);
             if (currentAnatomy === 'brain') activeAnatomyGroup = generateBrain();
             else if (currentAnatomy === 'spine') activeAnatomyGroup = generateSpine();
+            else if (currentAnatomy === 'ao') activeAnatomyGroup = generateAOSpine();
             else activeAnatomyGroup = generateJourney();
             
             scene.add(activeAnatomyGroup);
