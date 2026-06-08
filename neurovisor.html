@@ -378,7 +378,7 @@
             });
 
             // Columna vertebral: BodyParts3D (C3–C7, T1–T12, L1–L5, Sacro) (CC BY-SA 2.1 Japan, DBCLS)
-            gltfLoader.load('./Spine.glb?v=20260608g', (gltf) => {
+            gltfLoader.load('./Spine.glb?v=20260608h', (gltf) => {
                 gltf.scene.traverse(child => {
                     if(child.isMesh) child.geometry.computeVertexNormals();
                 });
@@ -946,15 +946,29 @@
         function generateJourney() {
             const group = new THREE.Group();
 
+            // ── Iluminación local del viaje ──────────────────────────────────────────
+            // Los materiales metálicos con metalness alto necesitan luz adicional porque
+            // sin envMap su componente difusa es casi cero y aparecen negros.
+            const hemi = new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.8);
+            hemi.position.set(0, 6, 0);
+            group.add(hemi);
+            const fill = new THREE.PointLight(0xffeedd, 1.2, 40);
+            fill.position.set(2, 5, 5);
+            group.add(fill);
+            const back = new THREE.PointLight(0xaabbff, 0.8, 40);
+            back.position.set(-5, 3, -6);
+            group.add(back);
+
             // ── Materiales ──────────────────────────────────────────────────────────
-            const mMetal     = new THREE.MeshPhysicalMaterial({color: 0xcccccc, metalness: 0.9, roughness: 0.2});
-            const mDarkMetal = new THREE.MeshPhysicalMaterial({color: 0x444444, metalness: 0.7, roughness: 0.5});
+            // metalness reducido a 0.4 para que los lights difusos contribuyan (sin envMap)
+            const mMetal     = new THREE.MeshPhysicalMaterial({color: 0xd0d0d0, metalness: 0.4, roughness: 0.3});
+            const mDarkMetal = new THREE.MeshPhysicalMaterial({color: 0x5a5a5a, metalness: 0.35, roughness: 0.55});
             const mCloth     = new THREE.MeshPhysicalMaterial({color: 0x3b82f6, roughness: 0.9});
             const mWhite     = new THREE.MeshPhysicalMaterial({color: 0xf3f4f6, roughness: 0.5});
             const mWood      = new THREE.MeshPhysicalMaterial({color: 0x8b5a2b, roughness: 0.8});
-            const mGlass     = new THREE.MeshPhysicalMaterial({color: 0x88ccff, transparent: true, opacity: 0.3, transmission: 0.9, roughness: 0.1});
+            const mGlass     = new THREE.MeshPhysicalMaterial({color: 0x88ccff, transparent: true, opacity: 0.35, roughness: 0.15});
             const mPlant     = new THREE.MeshPhysicalMaterial({color: 0x228b22, roughness: 0.8});
-            const mScreenBase= new THREE.MeshPhysicalMaterial({color: 0x111111});
+            const mScreenBase= new THREE.MeshPhysicalMaterial({color: 0x222222, roughness: 0.6});
             const mSkin      = new THREE.MeshPhysicalMaterial({color: 0xE0B090, roughness: 0.7});
             const mHair      = new THREE.MeshPhysicalMaterial({color: 0x3c2a1e, roughness: 0.9});
             const mGown      = new THREE.MeshPhysicalMaterial({color: 0x93c5fd, roughness: 0.8});   // bata azul
@@ -1185,6 +1199,11 @@
                     lampGroup.add(b);
                 }
                 lampGroup.add(arm1, arm2, lampDome);
+                // Luz real de quirófano (SpotLight desde el centro de la lámpara hacia la mesa)
+                const orLight = new THREE.SpotLight(0xfff5e0, 2.5, 18, Math.PI / 5, 0.4);
+                orLight.position.set(0, 3.1, 0.5);
+                orLight.target.position.set(0, -0.5, 1.8);
+                group.add(orLight, orLight.target);
                 group.add(lampGroup);
 
                 // Anestesiólogo + máquina
