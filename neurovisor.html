@@ -378,7 +378,7 @@
             });
 
             // Columna vertebral: BodyParts3D (C3–C7, T1–T12, L1–L5, Sacro) (CC BY-SA 2.1 Japan, DBCLS)
-            gltfLoader.load('./Spine.glb?v=20260608f', (gltf) => {
+            gltfLoader.load('./Spine.glb?v=20260608g', (gltf) => {
                 gltf.scene.traverse(child => {
                     if(child.isMesh) child.geometry.computeVertexNormals();
                 });
@@ -719,23 +719,118 @@
                 });
                 boneGroup.add(spineMesh);
 
-                // Nervios radiculares a lo largo de toda la columna (cervical → sacro)
-                // Espaciado: 15 pares, desde Y=5.0 (C2) hasta Y=-5.0 (S1)
-                for (let i = 0; i < 15; i++) {
+                // ── Nervios radiculares — posiciones derivadas del Spine.glb real ──────
+                // Escala: 12.0 / 699.9 mm → Y_three.js = Y_bp3d_mm * 0.01715
+                // Centroides de vértebras verificados contra el GLB exportado
+                const VERT_Y = {
+                    C1: 5.81, C2: 5.55, C3: 5.26, C4: 5.02, C5: 4.79, C6: 4.53, C7: 4.32,
+                    T1: 3.98, T2: 3.65, T3: 3.31, T4: 2.98, T5: 2.64,
+                    T6: 2.16, T7: 1.69, T8: 1.20, T9: 0.73, T10: 0.23, T11: -0.27, T12: -0.79,
+                    L1: -1.35, L2: -1.87, L3: -2.40, L4: -2.94, L5: -3.45, S1: -4.42
+                };
+                const midY = (a, b) => (a + b) / 2;
+
+                // Tabla de forámenes: [yForamen, longitud, anguloAbajo(rad), anguloAdelante(rad), radio, zForamen]
+                // anguloAbajo crece de cervical (horizontal) a lumbar (abanico cauda equina)
+                const NERVE_LEVELS = [
+                    [midY(VERT_Y.C1, VERT_Y.C2), 1.1, 0.05, 0.10, 0.055, -0.50], // C2
+                    [midY(VERT_Y.C2, VERT_Y.C3), 1.2, 0.07, 0.12, 0.055, -0.50], // C3
+                    [midY(VERT_Y.C3, VERT_Y.C4), 1.2, 0.09, 0.13, 0.060, -0.51], // C4
+                    [midY(VERT_Y.C4, VERT_Y.C5), 1.3, 0.10, 0.14, 0.060, -0.51], // C5
+                    [midY(VERT_Y.C5, VERT_Y.C6), 1.3, 0.11, 0.15, 0.060, -0.52], // C6
+                    [midY(VERT_Y.C6, VERT_Y.C7), 1.4, 0.13, 0.16, 0.065, -0.52], // C7
+                    [midY(VERT_Y.C7, VERT_Y.T1), 1.5, 0.16, 0.18, 0.065, -0.52], // C8
+                    [midY(VERT_Y.T1, VERT_Y.T2), 1.6, 0.19, 0.20, 0.060, -0.53], // T1
+                    [midY(VERT_Y.T2, VERT_Y.T3), 1.7, 0.22, 0.21, 0.060, -0.53], // T2
+                    [midY(VERT_Y.T3, VERT_Y.T4), 1.7, 0.24, 0.22, 0.060, -0.53], // T3
+                    [midY(VERT_Y.T4, VERT_Y.T5), 1.8, 0.26, 0.22, 0.060, -0.53], // T4
+                    [midY(VERT_Y.T5, VERT_Y.T6), 1.8, 0.28, 0.23, 0.060, -0.53], // T5
+                    [midY(VERT_Y.T6, VERT_Y.T7), 1.9, 0.30, 0.23, 0.060, -0.53], // T6
+                    [midY(VERT_Y.T7, VERT_Y.T8), 1.9, 0.32, 0.24, 0.060, -0.54], // T7
+                    [midY(VERT_Y.T8, VERT_Y.T9), 2.0, 0.34, 0.25, 0.065, -0.54], // T8
+                    [midY(VERT_Y.T9, VERT_Y.T10),2.0, 0.36, 0.25, 0.065, -0.54], // T9
+                    [midY(VERT_Y.T10,VERT_Y.T11),2.0, 0.38, 0.26, 0.065, -0.54], // T10
+                    [midY(VERT_Y.T11,VERT_Y.T12),2.0, 0.40, 0.26, 0.065, -0.54], // T11
+                    [midY(VERT_Y.T12,VERT_Y.L1), 2.1, 0.45, 0.28, 0.070, -0.54], // T12
+                    [midY(VERT_Y.L1, VERT_Y.L2), 2.3, 0.52, 0.30, 0.075, -0.53], // L1
+                    [midY(VERT_Y.L2, VERT_Y.L3), 2.5, 0.60, 0.33, 0.080, -0.52], // L2
+                    [midY(VERT_Y.L3, VERT_Y.L4), 2.7, 0.68, 0.36, 0.080, -0.51], // L3
+                    [midY(VERT_Y.L4, VERT_Y.L5), 3.0, 0.75, 0.40, 0.085, -0.50], // L4
+                    [midY(VERT_Y.L5, VERT_Y.S1), 2.5, 0.55, 0.35, 0.075, -0.48], // L5
+                ];
+                NERVE_LEVELS.forEach(([yF, len, downAng, fwdAng, r, zF]) => {
                     const nGroup = new THREE.Group();
-                    const yN = 5.0 - i * 0.72;
-                    // Raíces cervicales son más cortas; lumbares más largas (abanico cauda equina)
-                    const isCervical = yN > 2.8;
-                    const isLumbar   = yN < -1.5;
-                    const len = isCervical ? 1.2 : isLumbar ? 2.2 : 1.7;
-                    const angle = isLumbar ? 0.45 : 0.22;
-                    const nL = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, len).rotateZ(Math.PI/2), mats.nerve);
-                    nL.position.set(-len/2, 0, 0); nL.rotation.y = angle;
-                    const nR = nL.clone(); nR.position.set(len/2, 0, 0); nR.rotation.y = -angle;
-                    nGroup.add(nL, nR);
-                    nGroup.position.set(0, yN, -0.55);
+                    const makeRoot = (side) => {
+                        const root = new THREE.Mesh(
+                            new THREE.CylinderGeometry(r, r * 0.7, len, 8).rotateZ(Math.PI / 2),
+                            mats.nerve.clone()
+                        );
+                        root.position.set(side * len / 2, 0, 0);
+                        root.rotation.y = side * fwdAng;
+                        root.castShadow = true;
+                        root.userData.layer = 'tissue';
+                        return root;
+                    };
+                    nGroup.add(makeRoot(-1), makeRoot(1));
+                    nGroup.rotation.z = -downAng;
+                    nGroup.position.set(0, yF, zF);
                     tissueGroup.add(nGroup);
+                });
+
+                // ── Sistema vascular espinal ──────────────────────────────────────────────
+                // Cono medular: unión L1-L2 ≈ Y = -1.61 en espacio del grupo
+                const conusY = midY(VERT_Y.L1, VERT_Y.L2);
+
+                // Arteria espinal anterior (ASA): surco anterior de la médula, X=0
+                // Recorre desde C1 hasta el cono (L1-L2); diámetro ~0.8 mm real → 0.038 u aquí
+                const asaPts = [];
+                for (let j = 0; j <= 24; j++) {
+                    const t = j / 24;
+                    asaPts.push(new THREE.Vector3(0, VERT_Y.C1 + t * (conusY - VERT_Y.C1), -0.36));
                 }
+                const asaMesh = new THREE.Mesh(
+                    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(asaPts), 48, 0.038, 6, false),
+                    mats.artery.clone()
+                );
+                asaMesh.userData.layer = 'tissue';
+                tissueGroup.add(asaMesh);
+
+                // Arterias espinales posteriores (PSA): par posterolateral ±0.26 en X
+                [-0.26, 0.26].forEach(xPSA => {
+                    const psaPts = [];
+                    for (let j = 0; j <= 16; j++) {
+                        const t = j / 16;
+                        psaPts.push(new THREE.Vector3(xPSA, VERT_Y.C2 + t * (conusY - VERT_Y.C2), -0.78));
+                    }
+                    const psaMesh = new THREE.Mesh(
+                        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(psaPts), 32, 0.022, 5, false),
+                        mats.artery.clone()
+                    );
+                    psaMesh.userData.layer = 'tissue';
+                    tissueGroup.add(psaMesh);
+                });
+
+                // Arterias radiculomedulares segmentarias (T2–L1)
+                // Arteria de Adamkiewicz: nivel T9-T10, lado izquierdo del paciente (−X visual)
+                const adamkCenterY = midY(VERT_Y.T9, VERT_Y.T10);
+                [VERT_Y.T2, VERT_Y.T4, VERT_Y.T6, VERT_Y.T8,
+                 VERT_Y.T10, VERT_Y.T12, VERT_Y.L1].forEach((yR, idx) => {
+                    const isAdamk = Math.abs(yR - adamkCenterY) < 0.20;
+                    const side = (isAdamk || idx % 2 === 0) ? -1 : 1; // Adamkiewicz siempre izquierda
+                    const radR = isAdamk ? 0.032 : 0.018;
+                    const radPts = [
+                        new THREE.Vector3(side * 1.55, yR,        -0.52),
+                        new THREE.Vector3(side * 0.85, yR - 0.08, -0.45),
+                        new THREE.Vector3(side * 0.20, yR - 0.12, -0.38),
+                        new THREE.Vector3(0,            yR - 0.14, -0.36),
+                    ];
+                    const radMesh = new THREE.Mesh(
+                        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(radPts), 10, radR, 5, false),
+                        mats.artery.clone()
+                    );
+                    radMesh.userData.layer = 'tissue';
+                    tissueGroup.add(radMesh);
+                });
 
                 // Marcadores de patología sobre la columna real
                 const pY = 1.2; // nivel aproximado toraco-lumbar (zona de mayor carga)
