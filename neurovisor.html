@@ -378,7 +378,7 @@
             });
 
             // Columna vertebral: BodyParts3D (C3–C7, T1–T12, L1–L5, Sacro) (CC BY-SA 2.1 Japan, DBCLS)
-            gltfLoader.load('./Spine.glb?v=20260608d', (gltf) => {
+            gltfLoader.load('./Spine.glb?v=20260608e', (gltf) => {
                 gltf.scene.traverse(child => {
                     if(child.isMesh) child.geometry.computeVertexNormals();
                 });
