@@ -257,6 +257,7 @@
         let brainGLB = null;
         let spinalCordGLB = null;
         let skullGLB = null;
+        let spineColumnGLB = null;  // Columna real BodyParts3D (CC BY-SA 2.1 Japan)
 
         // --- MATEMÁTICAS PROCEDURALES ---
         function pseudo3DNoise(x, y, z) {
@@ -348,8 +349,8 @@
 
             const onModelReady = () => {
                 loadedCount++;
-                loaderBar.style.transform = `scaleX(${loadedCount / 3})`;
-                if(loadedCount >= 3) {
+                loaderBar.style.transform = `scaleX(${loadedCount / 4})`;
+                if(loadedCount >= 4) {
                     setAnatomy('brain');
                     document.getElementById('loader').style.opacity = '0';
                     setTimeout(() => document.getElementById('loader').style.display = 'none', 600);
@@ -392,6 +393,18 @@
                 console.warn('[NeuroAtlas] Skull.glb no disponible, usando geometría procedural.', err);
                 onModelReady();
             });
+
+            // Columna vertebral: BodyParts3D (C3–C7, T1–T12, L1–L5, Sacro) (CC BY-SA 2.1 Japan, DBCLS)
+            gltfLoader.load('./Spine.glb', (gltf) => {
+                gltf.scene.traverse(child => {
+                    if(child.isMesh) child.geometry.computeVertexNormals();
+                });
+                spineColumnGLB = normalizeGLB(gltf.scene, 12.0); // 18 vértebras reales
+                onModelReady();
+            }, undefined, (err) => {
+                console.warn('[NeuroAtlas] Spine.glb no disponible, usando geometría procedural.', err);
+                onModelReady();
+            });
             // ────────────────────────────────────────────────────────────────────
 
             window.addEventListener('resize', onWindowResize, false);
@@ -431,12 +444,10 @@
             // 1. CAPA ÓSEA — cráneo real (BodyParts3D CC BY-SA 2.1 Japan / DBCLS)
             if (skullGLB) {
                 const skullMesh = skullGLB.clone();
-                // BodyParts3D usa Z-arriba (anatómico). Conversión a Three.js Y-arriba:
-                // rotation.x = -π/2 → Z(sup)→Y(up), Y(ant)→Z(depth)
-                // rotation.y = π   → frontal mira a cámara (+Z)
-                skullMesh.rotation.x = -Math.PI / 2;
+                // Rx(-90°) ya horneado en el GLB (build_skull.py v2) → Y-arriba, anterior en -Z.
+                // Solo necesitamos rotation.y = π para que el frontal mire a cámara (+Z).
                 skullMesh.rotation.y = Math.PI;
-                // Posición: ligeramente más baja que el brain para centrar bóveda
+                // Posición: ligeramente más baja que el brain para centrar bóveda craneal
                 skullMesh.position.set(0, 0.9, 0);
                 skullMesh.traverse(child => {
                     if (!child.isMesh) return;
@@ -686,6 +697,7 @@
             animatedMeshes = [];
             const group = new THREE.Group();
             const segments = 4; const startY = 3.5; const spacing = 2.4;
+            const procCenterY = startY - ((segments-1)*spacing)/2;  // ≈ -0.1
 
             const boneGroup = new THREE.Group(); boneGroup.userData.layer = 'bone';
             const tissueGroup = new THREE.Group(); tissueGroup.userData.layer = 'tissue';
@@ -701,56 +713,142 @@
                     child.castShadow = true; child.receiveShadow = true;
                     child.userData.layer = 'tissue';
                 });
-                // La normalización ya centró el modelo; lo reposicionamos
-                // al centro del stack de vértebras procedurales
-                cord.position.set(0, startY - ((segments-1)*spacing)/2, -0.4);
+                // Con columna real: centrada en Y=0; médula desplazada -Z (canal vertebral posterior)
+                cord.position.set(0, spineColumnGLB ? 0 : procCenterY, -0.4);
             } else {
                 cord = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, segments*spacing+1, 32), mats.nerve);
-                cord.position.set(0, startY - ((segments-1)*spacing)/2, -0.4);
+                cord.position.set(0, procCenterY, -0.4);
                 cord.userData.layer = 'tissue';
             }
             tissueGroup.add(cord);
 
-            for(let i=0; i<segments; i++) {
-                let y = startY - (i*spacing);
-                let z = 0;
-                
-                let isBurst = (currentPathology === 'burst' && i === 1);
-                let isWedge = (currentPathology === 'wedge' && i === 1);
-                let isStenosis = (currentPathology === 'stenosis' && i === 1);
-                
-                if (currentPathology === 'listesis' && i >= 1) { z += 0.8; y -= 0.3; } // Deslizamiento
-                if (isWedge || isBurst) y -= 0.5; // Ajuste por colapso
-                
-                const vert = createAnatomicVertebra(isWedge, isBurst, isStenosis);
-                vert.position.set(0, y, z);
-                boneGroup.add(vert);
+            if (spineColumnGLB) {
+                // ── Columna real: 18 vértebras BodyParts3D (C3–C7, T1–T12, L1–L5, Sacro) ──
+                const spineMesh = spineColumnGLB.clone();
+                // Rx(-90°) ya horneado en el GLB; solo giramos Y=π para cámara frontal
+                spineMesh.rotation.y = Math.PI;
+                spineMesh.position.set(0, 0, 0);
+                spineMesh.traverse(child => {
+                    if (!child.isMesh) return;
+                    child.material = mats.bone.clone();
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    child.userData.layer = 'bone';
+                });
+                boneGroup.add(spineMesh);
 
-                // Nervios Netter
-                if(i < segments-1) {
+                // Nervios radiculares a nivel de transición toraco-lumbar (área central)
+                for (let i = 0; i < 5; i++) {
                     const nGroup = new THREE.Group();
-                    const nL = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.5).rotateZ(Math.PI/2), mats.nerve); nL.position.set(-1.6, 0, 0); nL.rotation.y = 0.3;
-                    const nR = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.5).rotateZ(Math.PI/2), mats.nerve); nR.position.set(1.6, 0, 0); nR.rotation.y = -0.3;
-                    nGroup.add(nL, nR); nGroup.position.set(0, y - spacing/2 + 0.3, z - 0.3);
+                    const yN = 1.5 - i * 1.2;
+                    const nL = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.8).rotateZ(Math.PI/2), mats.nerve);
+                    nL.position.set(-1.5, 0, 0); nL.rotation.y = 0.25;
+                    const nR = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.8).rotateZ(Math.PI/2), mats.nerve);
+                    nR.position.set(1.5, 0, 0); nR.rotation.y = -0.25;
+                    nGroup.add(nL, nR);
+                    nGroup.position.set(0, yN, -0.3);
                     tissueGroup.add(nGroup);
                 }
 
-                // Discos
-                if(i < segments-1) {
-                    const discGeo = new THREE.CylinderGeometry(1.55, 1.55, 0.4, 32); discGeo.scale(1.2, 1, 0.9);
-                    const dp = discGeo.attributes.position;
-                    for(let j=0; j<dp.count; j++) if(dp.getZ(j) < 0 && Math.abs(dp.getX(j)) < 1.0) dp.setZ(j, dp.getZ(j) + 0.4);
-                    discGeo.computeVertexNormals();
-                    const disc = new THREE.Mesh(discGeo, mats.disc);
-                    disc.position.set(0, y - spacing/2, z + 0.6);
-                    if(isBurst) disc.visible = false;
-                    boneGroup.add(disc);
+                // Marcadores de patología sobre la columna real
+                const pY = 1.2; // nivel aproximado toraco-lumbar (zona de mayor carga)
+                if (currentPathology === 'hernia') {
+                    const hernia = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), mats.hernia);
+                    hernia.scale.set(1.5, 0.5, 1.5);
+                    hernia.position.set(-0.8, pY, 0.2);
+                    hernia.rotation.y = 0.5;
+                    animatedMeshes.push({mesh: hernia, type: 'glow'});
+                    pathGroup.add(hernia);
+                } else if (currentPathology === 'wedge' || currentPathology === 'burst') {
+                    // Fragmento de compresión anterior
+                    const frag1 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 1.4), mats.bone);
+                    frag1.position.set(-0.4, pY + 0.05, 0.3);
+                    frag1.rotation.z = currentPathology === 'wedge' ? 0.28 : 0.15;
+                    frag1.userData.layer = 'pathology';
+                    pathGroup.add(frag1);
+                    if (currentPathology === 'burst') {
+                        const frag2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.25, 0.9), mats.bone);
+                        frag2.position.set(0.55, pY + 0.35, 0.55);
+                        frag2.rotation.set(0.2, 0.3, -0.12);
+                        frag2.userData.layer = 'pathology';
+                        pathGroup.add(frag2);
+                        const frag3 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.7), mats.bone);
+                        frag3.position.set(-0.3, pY - 0.35, -0.3);
+                        frag3.rotation.set(-0.15, -0.2, 0.1);
+                        frag3.userData.layer = 'pathology';
+                        pathGroup.add(frag3);
+                    }
+                } else if (currentPathology === 'stenosis') {
+                    // Ligamento amarillo hipertrófico + osteofito
+                    const lig = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.18, 16, 24), mats.hernia);
+                    lig.position.set(0, pY, -0.35);
+                    lig.scale.set(1.4, 0.9, 1);
+                    lig.userData.layer = 'pathology';
+                    pathGroup.add(lig);
+                    const ost = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), mats.bone);
+                    ost.position.set(0.5, pY + 0.4, 0.4);
+                    ost.userData.layer = 'pathology';
+                    pathGroup.add(ost);
+                } else if (currentPathology === 'listesis') {
+                    // Espondilolistesis: desplazamiento anterior de vértebra superior
+                    const slipFrag = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.0, 1.6), mats.bone);
+                    slipFrag.position.set(0, pY + 0.5, 0.7);
+                    slipFrag.userData.layer = 'pathology';
+                    pathGroup.add(slipFrag);
+                } else if (currentPathology === 'avm') {
+                    for(let i = 0; i < 8; i++) {
+                        const r = 0.8 + i * 0.3;
+                        const pts = [];
+                        for(let t = 0; t < 20; t++) {
+                            const a = (t/20)*Math.PI*2;
+                            pts.push(new THREE.Vector3(Math.cos(a)*r*0.3, -3 + i*0.85, Math.sin(a)*r*0.2));
+                        }
+                        const av = createVessel(pts, 0.06 + i*0.01, mats.artery);
+                        av.userData.layer = 'pathology';
+                        pathGroup.add(av);
+                    }
+                }
+            } else {
+                // ── Fallback procedural: 4 vértebras ──
+                for(let i=0; i<segments; i++) {
+                    let y = startY - (i*spacing);
+                    let z = 0;
 
-                    if(currentPathology === 'hernia' && i===1) {
-                        const hernia = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), mats.hernia);
-                        hernia.scale.set(1.5, 0.5, 1.5); hernia.position.set(-0.8, y - spacing/2, z); hernia.rotation.y = 0.5;
-                        animatedMeshes.push({mesh: hernia, type: 'glow'});
-                        pathGroup.add(hernia);
+                    let isBurst = (currentPathology === 'burst' && i === 1);
+                    let isWedge = (currentPathology === 'wedge' && i === 1);
+                    let isStenosis = (currentPathology === 'stenosis' && i === 1);
+
+                    if (currentPathology === 'listesis' && i >= 1) { z += 0.8; y -= 0.3; }
+                    if (isWedge || isBurst) y -= 0.5;
+
+                    const vert = createAnatomicVertebra(isWedge, isBurst, isStenosis);
+                    vert.position.set(0, y, z);
+                    boneGroup.add(vert);
+
+                    if(i < segments-1) {
+                        const nGroup = new THREE.Group();
+                        const nL = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.5).rotateZ(Math.PI/2), mats.nerve); nL.position.set(-1.6, 0, 0); nL.rotation.y = 0.3;
+                        const nR = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.5).rotateZ(Math.PI/2), mats.nerve); nR.position.set(1.6, 0, 0); nR.rotation.y = -0.3;
+                        nGroup.add(nL, nR); nGroup.position.set(0, y - spacing/2 + 0.3, z - 0.3);
+                        tissueGroup.add(nGroup);
+                    }
+
+                    if(i < segments-1) {
+                        const discGeo = new THREE.CylinderGeometry(1.55, 1.55, 0.4, 32); discGeo.scale(1.2, 1, 0.9);
+                        const dp = discGeo.attributes.position;
+                        for(let j=0; j<dp.count; j++) if(dp.getZ(j) < 0 && Math.abs(dp.getX(j)) < 1.0) dp.setZ(j, dp.getZ(j) + 0.4);
+                        discGeo.computeVertexNormals();
+                        const disc = new THREE.Mesh(discGeo, mats.disc);
+                        disc.position.set(0, y - spacing/2, z + 0.6);
+                        if(isBurst) disc.visible = false;
+                        boneGroup.add(disc);
+
+                        if(currentPathology === 'hernia' && i===1) {
+                            const hernia = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), mats.hernia);
+                            hernia.scale.set(1.5, 0.5, 1.5); hernia.position.set(-0.8, y - spacing/2, z); hernia.rotation.y = 0.5;
+                            animatedMeshes.push({mesh: hernia, type: 'glow'});
+                            pathGroup.add(hernia);
+                        }
                     }
                 }
             }
