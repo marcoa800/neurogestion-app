@@ -719,33 +719,6 @@
                 });
                 boneGroup.add(spineMesh);
 
-                // T2–T4: no disponibles en BodyParts3D → relleno procedural para cerrar hueco
-                // Posiciones estimadas en el espacio normalizado (12 units = 700mm)
-                const mkThoracic = (y) => {
-                    const vg = new THREE.Group();
-                    const mk = (w, h, d, px, py, pz) => {
-                        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats.bone.clone());
-                        m.position.set(px, py, pz);
-                        m.castShadow = true; m.receiveShadow = true;
-                        m.userData.layer = 'bone';
-                        return m;
-                    };
-                    vg.add(
-                        mk(0.90, 0.68, 0.72,  0,     0,    0.25),  // cuerpo vertebral (anterior)
-                        mk(0.20, 0.38, 0.48, -0.42,  0,   -0.10),  // pedículo izq
-                        mk(0.20, 0.38, 0.48,  0.42,  0,   -0.10),  // pedículo der
-                        mk(0.70, 0.16, 0.26, -0.88,  0,   -0.10),  // apófisis transversa izq
-                        mk(0.70, 0.16, 0.26,  0.88,  0,   -0.10),  // apófisis transversa der
-                        mk(0.62, 0.22, 0.46,  0,     0,   -0.40),  // lámina
-                        mk(0.18, 0.38, 0.55,  0,     0,   -0.82),  // apófisis espinosa
-                    );
-                    vg.position.set(0, y, 0);
-                    return vg;
-                };
-                boneGroup.add(mkThoracic(3.10));  // T2 aprox
-                boneGroup.add(mkThoracic(2.60));  // T3 aprox
-                boneGroup.add(mkThoracic(2.10));  // T4 aprox
-
                 // Nervios radiculares a lo largo de toda la columna (cervical → sacro)
                 // Espaciado: 15 pares, desde Y=5.0 (C2) hasta Y=-5.0 (S1)
                 for (let i = 0; i < 15; i++) {
