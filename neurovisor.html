@@ -703,10 +703,30 @@
                     new THREE.Vector3( 0.00,-1.61,  0.58),  // cono medular L1-L2
                 ];
                 const cordCurve = new THREE.CatmullRomCurve3(cordPts.map(p => new THREE.Vector3(p.x, p.y, p.z)));
-                cord = new THREE.Mesh(
-                    new THREE.TubeGeometry(cordCurve, 64, 0.30, 16, false),
-                    mats.nerve.clone()
-                );
+                // Radio variable: médula ~10mm diámetro → r≈0.085 u. Ensanchamientos
+                // cervical (C4-C6) y lumbar (T11-L1) ~13mm. Adelgaza hacia el cono.
+                const cordGeo = new THREE.TubeGeometry(cordCurve, 96, 1, 16, false);
+                const pos = cordGeo.attributes.position;
+                const tmp = new THREE.Vector3();
+                const segN = 96;
+                for (let i = 0; i <= segN; i++) {
+                    const t = i / segN;
+                    // perfil de radio a lo largo de la médula (t=0 cráneo → t=1 cono)
+                    const cervical = Math.exp(-Math.pow((t - 0.18) / 0.10, 2)) * 0.025; // intumescencia cervical
+                    const lumbar   = Math.exp(-Math.pow((t - 0.82) / 0.10, 2)) * 0.030; // intumescencia lumbar
+                    const taper    = t > 0.90 ? (1 - (t - 0.90) / 0.10) * 0.5 + 0.5 : 1; // cono adelgaza
+                    const r = (0.075 + cervical + lumbar) * taper;
+                    const center = cordCurve.getPointAt(t);
+                    for (let j = 0; j <= 16; j++) {
+                        const idx = i * 17 + j;
+                        if (idx >= pos.count) break;
+                        tmp.set(pos.getX(idx), pos.getY(idx), pos.getZ(idx));
+                        tmp.sub(center).multiplyScalar(r).add(center);
+                        pos.setXYZ(idx, tmp.x, tmp.y, tmp.z);
+                    }
+                }
+                cordGeo.computeVertexNormals();
+                cord = new THREE.Mesh(cordGeo, mats.nerve.clone());
                 cord.userData.layer = 'tissue';
             } else if (spinalCordGLB) {
                 cord = spinalCordGLB.clone();
