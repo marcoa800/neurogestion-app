@@ -684,9 +684,31 @@
             const tissueGroup = new THREE.Group(); tissueGroup.userData.layer = 'tissue';
             const pathGroup = new THREE.Group(); pathGroup.userData.layer = 'pathology';
 
-            // Médula espinal: GLB real o cilindro procedural como fallback
+            // Médula espinal
+            // Con Spine.glb real: cilindro procedural tapered con coordenadas exactas del GLB.
+            // El HuBMAP cord GLB tiene ejes distintos → se usa solo con la columna procedural.
             let cord;
-            if(spinalCordGLB) {
+            if (spineColumnGLB) {
+                // C1 centroide Y=5.81, cono medular ≈ L1-L2 midpoint Y=-1.61
+                // Longitud médula ≈ 7.72 u. Centro en Y=2.25.  Z=+0.55 = interior del canal
+                // tras rotation.y=π del spine (Z>0 = posterior en escena)
+                const cordPts = [
+                    new THREE.Vector3( 0.00, 6.10,  0.50),  // base cráneo / C0
+                    new THREE.Vector3( 0.00, 5.50,  0.52),  // C1
+                    new THREE.Vector3( 0.00, 4.50,  0.54),  // C4 (lordosis cervical)
+                    new THREE.Vector3( 0.00, 3.00,  0.56),  // C7-T1
+                    new THREE.Vector3( 0.00, 1.50,  0.60),  // T4 (cifosis dorsal)
+                    new THREE.Vector3( 0.00, 0.00,  0.62),  // T8
+                    new THREE.Vector3( 0.00,-1.00,  0.60),  // T12
+                    new THREE.Vector3( 0.00,-1.61,  0.58),  // cono medular L1-L2
+                ];
+                const cordCurve = new THREE.CatmullRomCurve3(cordPts.map(p => new THREE.Vector3(p.x, p.y, p.z)));
+                cord = new THREE.Mesh(
+                    new THREE.TubeGeometry(cordCurve, 64, 0.30, 16, false),
+                    mats.nerve.clone()
+                );
+                cord.userData.layer = 'tissue';
+            } else if (spinalCordGLB) {
                 cord = spinalCordGLB.clone();
                 cord.traverse(child => {
                     if(!child.isMesh) return;
@@ -694,10 +716,7 @@
                     child.castShadow = true; child.receiveShadow = true;
                     child.userData.layer = 'tissue';
                 });
-                // Spine.glb tiene rotation.y=π → en escena Z>0 = posterior (canal), Z<0 = anterior (cuerpos)
-                // El cord GLB debe coincidir: mismo Y-flip + posición en Z=+0.6 (dentro del canal real)
-                cord.rotation.y = Math.PI;
-                cord.position.set(0, spineColumnGLB ? 0.5 : procCenterY, 0.6);
+                cord.position.set(0, procCenterY, -0.5);
             } else {
                 cord = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, segments*spacing+1, 32), mats.nerve);
                 cord.position.set(0, procCenterY, -0.5);
