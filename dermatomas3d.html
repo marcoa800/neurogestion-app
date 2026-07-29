@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mapa 3D de Dermatomas</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#f1f5f9;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+  #wrap{display:flex;height:100%;width:100%}
+  #canvas{flex:1;min-width:0;position:relative;cursor:grab}
+  #canvas:active{cursor:grabbing}
+  #panel{width:310px;flex-shrink:0;background:#fff;border-left:1px solid #e2e8f0;
+    padding:18px;overflow-y:auto}
+  @media(max-width:760px){#wrap{flex-direction:column}#panel{width:100%;height:44%;border-left:0;border-top:1px solid #e2e8f0}}
+  #hint{position:absolute;top:12px;left:12px;background:rgba(255,255,255,.92);
+    border:1px solid #e2e8f0;border-radius:10px;padding:7px 11px;font-size:11px;color:#64748b}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:13px;color:#64748b;background:#f1f5f9}
+  .chip{display:inline-block;padding:3px 9px;border-radius:8px;font-size:12px;
+    font-weight:700;color:#fff}
+  .card{border:2px solid;border-radius:16px;padding:14px;margin-bottom:14px}
+  .lbl{font-size:11px;font-weight:600;color:#64748b;margin-bottom:2px}
+  .val{font-size:13px;color:#1e293b;margin-bottom:9px;line-height:1.4}
+  h2{font-size:14px;color:#1e293b;margin-bottom:3px}
+  .sub{font-size:11px;color:#94a3b8;margin-bottom:14px}
+  .grid{display:flex;flex-wrap:wrap;gap:5px}
+  .lv{padding:4px 9px;border-radius:8px;font-size:11px;font-weight:700;
+    border:1px solid #e2e8f0;background:#fff;color:#64748b;cursor:pointer;transition:.15s}
+  .lv:hover{border-color:#cbd5e1}
+  .note{font-size:10.5px;color:#94a3b8;line-height:1.5;margin-top:12px;
+    border-top:1px solid #f1f5f9;padding-top:10px}
+  .btn{padding:5px 11px;border-radius:9px;font-size:11px;font-weight:600;border:1px solid #e2e8f0;
+    background:#fff;color:#475569;cursor:pointer;margin-right:5px}
+  .btn:hover{background:#f8fafc}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="canvas">
+    <div id="hint">Arrastra para girar · rueda para acercar · clic en el cuerpo</div>
+    <div id="loading">Cargando modelo anatómico…</div>
+  </div>
+  <div id="panel">
+    <h2>Mapa 3D de dermatomas</h2>
+    <div class="sub">Haz clic en cualquier zona del cuerpo</div>
+    <div style="margin-bottom:12px">
+      <button class="btn" onclick="verFrente()">Frente</button>
+      <button class="btn" onclick="verEspalda()">Espalda</button>
+    </div>
+    <div id="detalle"></div>
+    <div class="lbl" style="margin-bottom:6px">Ir a un nivel</div>
+    <div class="grid" id="niveles"></div>
+    <p class="note">
+      Esquema orientativo. Los dermatomas se superponen entre niveles adyacentes, por lo que
+      una raíz aislada rara vez produce anestesia completa de su territorio.
+      La cara depende del trigémino (V), no de raíces espinales.
+    </p>
+    <p class="note" style="border:0;padding-top:4px">
+      Modelo: malla base de MakeHuman (dominio público, CC0).
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ── Datos clínicos por nivel ────────────────────────────────────────────────
+const D = {
+  V:   {reg:'Trigémino', ter:'Cara y frente — depende del V par, no de raíces espinales.', ref:'Corneal (V aferente, VII eferente)', mus:'Maseteros y temporal (masticación)'},
+  C2:  {reg:'Cervical', ter:'Occipucio, ángulo de la mandíbula.', ref:'—', mus:'—'},
+  C3:  {reg:'Cervical', ter:'Cuello, fosa supraclavicular.', ref:'—', mus:'Diafragma (C3-C5)'},
+  C4:  {reg:'Cervical', ter:'Hombro y clavícula.', ref:'—', mus:'Diafragma (C3-C5)'},
+  C5:  {reg:'Cervical', ter:'Cara lateral del brazo, deltoides.', ref:'Bicipital (C5-C6)', mus:'Deltoides / flexores del codo'},
+  C6:  {reg:'Cervical', ter:'Antebrazo lateral y PULGAR.', ref:'Braquiorradial (C5-C6)', mus:'Extensores de muñeca'},
+  C7:  {reg:'Cervical', ter:'DEDO MEDIO, cara posterior del antebrazo.', ref:'Tricipital (C7-C8)', mus:'Extensores del codo (tríceps)'},
+  C8:  {reg:'Cervical', ter:'MEÑIQUE y antebrazo medial.', ref:'Tricipital (C7-C8)', mus:'Flexores de los dedos'},
+  D1:  {reg:'Dorsal', ter:'Cara medial del brazo.', ref:'—', mus:'Interóseos (abducción de dedos)'},
+  D2:  {reg:'Dorsal', ter:'Axila y cara interna del brazo.', ref:'—', mus:'Intercostales'},
+  D3:  {reg:'Dorsal', ter:'Tercer espacio intercostal.', ref:'—', mus:'Intercostales'},
+  D4:  {reg:'Dorsal', ter:'PEZÓN.', ref:'—', mus:'Intercostales'},
+  D5:  {reg:'Dorsal', ter:'Entre pezón y apéndice xifoides.', ref:'—', mus:'Intercostales'},
+  D6:  {reg:'Dorsal', ter:'APÉNDICE XIFOIDES.', ref:'Cutáneo abdominal superior', mus:'Intercostales / abdominales'},
+  D7:  {reg:'Dorsal', ter:'Epigastrio.', ref:'Cutáneo abdominal superior', mus:'Abdominales'},
+  D8:  {reg:'Dorsal', ter:'Abdomen superior.', ref:'Cutáneo abdominal superior', mus:'Abdominales'},
+  D9:  {reg:'Dorsal', ter:'Abdomen medio, sobre el ombligo.', ref:'—', mus:'Abdominales'},
+  D10: {reg:'Dorsal', ter:'OMBLIGO.', ref:'Cutáneo abdominal inferior', mus:'Recto abdominal'},
+  D11: {reg:'Dorsal', ter:'Abdomen inferior.', ref:'Cutáneo abdominal inferior', mus:'Abdominales bajos'},
+  D12: {reg:'Dorsal', ter:'Región inguinal, pliegue.', ref:'Cremastérico (L1-L2)', mus:'Abdominales bajos'},
+  L1:  {reg:'Lumbar', ter:'Ingle, cara superior del muslo.', ref:'Cremastérico (L1-L2)', mus:'—'},
+  L2:  {reg:'Lumbar', ter:'Cara anterior media del muslo.', ref:'Cremastérico (L1-L2)', mus:'Flexores de cadera (psoas)'},
+  L3:  {reg:'Lumbar', ter:'Rodilla, muslo anteromedial.', ref:'Rotuliano (L3-L4)', mus:'Extensores de rodilla (cuádriceps)'},
+  L4:  {reg:'Lumbar', ter:'Pierna medial, MALÉOLO INTERNO.', ref:'Rotuliano (L3-L4)', mus:'Dorsiflexores del tobillo (tibial ant.)'},
+  L5:  {reg:'Lumbar', ter:'Dorso del pie, PRIMER ESPACIO INTERDIGITAL.', ref:'—', mus:'Extensor largo del 1.er dedo'},
+  S1:  {reg:'Sacro', ter:'Borde lateral del pie y TALÓN.', ref:'Aquíleo (S1-S2)', mus:'Flexores plantares (gastrocnemio)'},
+  S2:  {reg:'Sacro', ter:'Cara posterior del muslo.', ref:'Aquíleo (S1-S2)', mus:'Flexores de los dedos del pie'},
+  S345:{reg:'Sacro', ter:'Región perianal, "en silla de montar".', ref:'Bulbocavernoso y anal (S2-S4)', mus:'Esfínter anal externo'},
+};
+const ORDEN = ['V','C2','C3','C4','C5','C6','C7','C8','D1','D2','D3','D4','D5','D6','D7','D8','D9','D10','D11','D12','L1','L2','L3','L4','L5','S1','S2','S345'];
+const NOMBRE = k => k === 'S345' ? 'S3–S5' : k;
+
+// Paleta: cada región tiene su tono y cada nivel dentro de ella su propia
+// luminosidad, para que las bandas se distingan sin necesidad de seleccionarlas.
+const TONO = { Trigémino:38, Cervical:174, Dorsal:217, Lumbar:262, Sacro:330 };
+const SERIE = {
+  Trigémino:['V'],
+  Cervical: ['C2','C3','C4','C5','C6','C7','C8'],
+  Dorsal:   ['D1','D2','D3','D4','D5','D6','D7','D8','D9','D10','D11','D12'],
+  Lumbar:   ['L1','L2','L3','L4','L5'],
+  Sacro:    ['S1','S2','S345'],
+};
+
+function hsl2hex(h,s,l){
+  s/=100; l/=100;
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let r,g,b;
+  if(h<60)      [r,g,b]=[c,x,0];
+  else if(h<120)[r,g,b]=[x,c,0];
+  else if(h<180)[r,g,b]=[0,c,x];
+  else if(h<240)[r,g,b]=[0,x,c];
+  else if(h<300)[r,g,b]=[x,0,c];
+  else          [r,g,b]=[c,0,x];
+  const q=v=>Math.round((v+m)*255).toString(16).padStart(2,'0');
+  return '#'+q(r)+q(g)+q(b);
+}
+
+// Color precalculado por nivel
+const COL = {};
+for (const [reg, lista] of Object.entries(SERIE)){
+  const h = TONO[reg];
+  lista.forEach((k, i) => {
+    const t = lista.length > 1 ? i/(lista.length-1) : 0.5;
+    COL[k] = {
+      off: hsl2hex(h, 52, 76 - t*22),   // 76% → 54% de luminosidad
+      on:  hsl2hex(h, 85, 42),          // seleccionado: saturado y oscuro
+    };
+  });
+}
+const colOf = k => COL[k];
+
+// ── Escena ──────────────────────────────────────────────────────────────────
+let scene, camera, renderer, controls, malla, dermVert = [], sel = 'L5';
+const cont = document.getElementById('canvas');
+
+function init(){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf1f5f9);
+
+  camera = new THREE.PerspectiveCamera(38, cont.clientWidth/cont.clientHeight, 0.1, 200);
+  camera.position.set(0, 9, 30);
+
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(cont.clientWidth, cont.clientHeight);
+  cont.appendChild(renderer.domElement);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = .08;
+  controls.target.set(0, 8.3, 0);
+  controls.minDistance = 12; controls.maxDistance = 55;
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xcbd5e1, 0.95));
+  const key = new THREE.DirectionalLight(0xffffff, 0.55); key.position.set(6,14,12); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.3); fill.position.set(-8,6,-10); scene.add(fill);
+
+  new THREE.OBJLoader().load('./anatomia/cuerpo.obj', obj => {
+    obj.traverse(c => { if (c.isMesh) malla = c; });
+    prepararMalla();
+    scene.add(malla);
+    document.getElementById('loading').remove();
+    pintar();
+  }, undefined, e => {
+    document.getElementById('loading').textContent = 'No se pudo cargar el modelo.';
+    console.error(e);
+  });
+
+  renderer.domElement.addEventListener('pointerdown', onDown);
+  renderer.domElement.addEventListener('pointerup', onUp);
+  addEventListener('resize', onResize);
+  animate();
+}
+
+// ── Asignación de dermatoma por posición del vértice ────────────────────────
+// El modelo está de pie: pies en Y=0, coronilla en Y≈16.66, mirando hacia +Z.
+// Referencias anatómicas medidas sobre esta malla (pies en Y=0, altura 16.66)
+const A = {
+  HOMBRO_X: 2.0, HOMBRO_Y: 13.63, MANO_X: 4.96, MANO_Y: 9.9,
+  CLAVICULA: 13.2, INGLE: 8.0, RODILLA: 4.6,
+};
+// Bandas del tronco ancladas a puntos reales: D4 pezón (12.0), D6 xifoides (11.2),
+// D10 ombligo (10.0), D12 ingle (8.6). No son uniformes: se comprimen arriba.
+const TRONCO = [
+  ['D2',12.60],['D3',12.20],['D4',11.80],['D5',11.45],['D6',11.05],['D7',10.70],
+  ['D8',10.40],['D9',10.15],['D10',9.85],['D11',9.40],['D12',8.60],
+];
+
+// Eje del brazo hombro→mano, con su perpendicular LATERAL (hacia afuera)
+const _ax = A.MANO_X-A.HOMBRO_X, _ay = A.MANO_Y-A.HOMBRO_Y;
+const ALEN = Math.hypot(_ax,_ay);
+const UX = _ax/ALEN, UY = _ay/ALEN;
+const NX = -UY, NY = UX;               // perpendicular lateral (+x, +y)
+
+// ¿Este vértice pertenece al brazo? Devuelve {t, perp} o null
+function ejeBrazo(x,y){
+  const ax = Math.abs(x);
+  const dx = ax-A.HOMBRO_X, dy = y-A.HOMBRO_Y;
+  const t = (dx*UX + dy*UY)/ALEN;
+  const perp = dx*NX + dy*NY;
+  if (t > 0.02 && t < 1.35 && Math.abs(perp) < 2.4 && ax > 1.55) return {t, perp};
+  return null;
+}
+
+function prepararMalla(){
+  const g = malla.geometry;
+  g.computeVertexNormals();
+  const pos = g.attributes.position;
+  const n = pos.count;
+
+  // ── Paso 1: centrar los ejes con la geometría real ──
+  // El ancla teórica del hombro no cae exactamente en la línea media del brazo,
+  // y las piernas no están centradas en z=0. Se miden los centros reales.
+  const NB = 12;                                    // segmentos a lo largo del brazo
+  const bs = Array.from({length:NB}, () => ({s:0,c:0}));
+  let piernaX = 0, piernaZ = 0, piernaN = 0;
+  for (let i=0;i<n;i++){
+    const x=pos.getX(i), y=pos.getY(i), z=pos.getZ(i);
+    const b = ejeBrazo(x,y);
+    if (b){
+      const k = Math.min(NB-1, Math.max(0, Math.floor(b.t*NB)));
+      bs[k].s += b.perp; bs[k].c++;
+    } else if (y > 1.2 && y < A.RODILLA-0.6 && Math.abs(x) > 0.2){
+      piernaX += Math.abs(x); piernaZ += z; piernaN++;
+    }
+  }
+  const perpMedio = bs.map(b => b.c ? b.s/b.c : 0);
+  const PIERNA_X = piernaN ? piernaX/piernaN : 1.85;
+  const PIERNA_Z = piernaN ? piernaZ/piernaN : -1.10;
+
+  // ── Paso 2: asignar dermatoma ──
+  dermVert = new Array(n);
+  for (let i=0;i<n;i++){
+    dermVert[i] = clasificar(pos.getX(i), pos.getY(i), pos.getZ(i),
+                             perpMedio, NB, PIERNA_X, PIERNA_Z);
+  }
+
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n*3), 3));
+  malla.material = new THREE.MeshStandardMaterial({
+    vertexColors:true, roughness:.72, metalness:.02, flatShading:false,
+  });
+}
+
+function clasificar(x,y,z,perpMedio,NB,PIERNA_X,PIERNA_Z){
+  const ax = Math.abs(x);
+
+  // ── Brazo: los dermatomas son franjas longitudinales, no bandas ──
+  const b = ejeBrazo(x,y);
+  if (b){
+    const k = Math.min(NB-1, Math.max(0, Math.floor(b.t*NB)));
+    const p = b.perp - perpMedio[k];        // centrado sobre el eje real
+    if (b.t < 0.38) return p > 0 ? 'C5' : 'D1';        // brazo: lateral / medial
+    if (b.t < 0.80){                                    // antebrazo
+      if (p >  0.22) return 'C6';
+      if (p < -0.22) return 'C8';
+      return 'C7';
+    }
+    if (p >  0.15) return 'C6';                         // mano: lado del pulgar
+    if (p < -0.15) return 'C8';                         // lado del meñique
+    return 'C7';                                        // dedo medio
+  }
+
+  // ── Cabeza y cuello ──
+  if (y > 14.75) return z > 0.15 ? 'V' : 'C2';
+  if (y > 14.05) return 'C3';
+  if (y > A.CLAVICULA) return 'C4';
+
+  // ── Tronco ──
+  if (y > A.INGLE){
+    if (y < 9.4 && z < PIERNA_Z + 0.4) return y < 8.7 ? 'S2' : 'D12';  // glúteo
+    for (const [k, yTop] of TRONCO) if (y > yTop) return k;
+    return 'D12';
+  }
+
+  // ── Periné ──
+  if (y > 7.2 && ax < 0.75) return 'S345';
+
+  // ── Muslo ──
+  if (y > 6.5) return 'L1';
+  if (y > A.RODILLA + 0.9) return (z - PIERNA_Z) < -0.5 ? 'S2' : 'L2';
+  if (y > A.RODILLA - 0.6) return 'L3';
+
+  // ── Pierna y pie: franjas longitudinales, centradas en el eje real ──
+  const dx = ax - PIERNA_X;            // − medial, + lateral
+  const dz = z  - PIERNA_Z;            // + anterior, − posterior
+  if (y < 1.1){                        // pie
+    if (dz > 0.35) return 'L5';        // dorso
+    return dx < -0.15 ? 'L4' : 'S1';   // borde medial / lateral y talón
+  }
+  if (dz < -0.35) return 'S1';         // pantorrilla posterior
+  if (dx < -0.10) return 'L4';         // cara medial (maléolo interno)
+  return 'L5';                         // cara anterolateral
+}
+
+// ── Pintado ─────────────────────────────────────────────────────────────────
+function hex2rgb(h){ const v=parseInt(h.slice(1),16); return [(v>>16&255)/255,(v>>8&255)/255,(v&255)/255]; }
+
+function pintar(){
+  if (!malla) return;
+  const col = malla.geometry.attributes.color;
+  for (let i=0;i<dermVert.length;i++){
+    const k = dermVert[i];
+    const c = colOf(k);
+    const [r,g,b] = hex2rgb(k === sel ? c.on : c.off);
+    col.setXYZ(i, r, g, b);
+  }
+  col.needsUpdate = true;
+  panel();
+}
+
+function panel(){
+  const d = D[sel], c = colOf(sel);
+  document.getElementById('detalle').innerHTML = `
+    <div class="card" style="border-color:${c.on};background:${c.off}44">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:11px">
+        <span class="chip" style="background:${c.on}">${NOMBRE(sel)}</span>
+        <span style="font-size:12px;font-weight:600;color:${c.on}">${d.reg}</span>
+      </div>
+      <div class="lbl">Territorio sensitivo</div><div class="val">${d.ter}</div>
+      <div class="lbl">Reflejo asociado</div><div class="val">${d.ref}</div>
+      <div class="lbl">Músculo clave (miotoma)</div><div class="val" style="margin-bottom:0">${d.mus}</div>
+    </div>`;
+  document.querySelectorAll('#niveles .lv').forEach(b=>{
+    const k = b.dataset.k, c2 = colOf(k);
+    const on = k === sel;
+    b.style.background = on ? c2.on : '#fff';
+    b.style.borderColor = on ? c2.on : '#e2e8f0';
+    b.style.color = on ? '#fff' : '#64748b';
+  });
+}
+
+function seleccionar(k){ sel = k; pintar(); }
+
+// ── Interacción ─────────────────────────────────────────────────────────────
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+let downAt = null;
+function onDown(e){ downAt = {x:e.clientX, y:e.clientY}; }
+function onUp(e){
+  if (!downAt || !malla) return;
+  // Ignora si el usuario estaba rotando
+  if (Math.hypot(e.clientX-downAt.x, e.clientY-downAt.y) > 5) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((e.clientX-r.left)/r.width)*2-1;
+  mouse.y = -((e.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObject(malla, true)[0];
+  if (hit && hit.face) seleccionar(dermVert[hit.face.a]);
+}
+
+function verFrente(){ camera.position.set(0, 9, 30); controls.target.set(0,8.3,0); controls.update(); }
+function verEspalda(){ camera.position.set(0, 9, -30); controls.target.set(0,8.3,0); controls.update(); }
+
+function onResize(){
+  camera.aspect = cont.clientWidth/cont.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(cont.clientWidth, cont.clientHeight);
+}
+function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene,camera); }
+
+// Botones de nivel
+document.getElementById('niveles').innerHTML = ORDEN.map(k =>
+  `<button class="lv" data-k="${k}" onclick="seleccionar('${k}')">${NOMBRE(k)}</button>`).join('');
+
+init();
+</script>
+</body>
+</html>
