@@ -674,6 +674,8 @@
             return vGroup;
         }
 
+        let curvaMedula = null;   // trayecto de la médula, compartido con las arterias
+
         function generateSpine() {
             animatedMeshes = [];
             const group = new THREE.Group();
@@ -703,6 +705,7 @@
                     new THREE.Vector3( 0.00,-1.61,  0.58),  // cono medular L1-L2
                 ];
                 const cordCurve = new THREE.CatmullRomCurve3(cordPts.map(p => new THREE.Vector3(p.x, p.y, p.z)));
+                curvaMedula = cordCurve;   // las arterias espinales la siguen
                 // Radio variable: médula ~10mm diámetro → r≈0.085 u. Ensanchamientos
                 // cervical (C4-C6) y lumbar (T11-L1) ~13mm. Adelgaza hacia el cono.
                 const cordGeo = new THREE.TubeGeometry(cordCurve, 96, 1, 16, false);
@@ -770,52 +773,79 @@
                 };
                 const midY = (a, b) => (a + b) / 2;
 
-                // Tabla de forámenes: [yForamen, longitud, anguloAbajo(rad), anguloAdelante(rad), radio, zForamen]
-                // anguloAbajo crece de cervical (horizontal) a lumbar (abanico cauda equina)
-                // zF positivo: tras rotation.y=π del spine, Z>0 = posterior = posición del canal/foramen
+                // ── Raíces nerviosas ──────────────────────────────────────────────
+                // Cada raíz sale de SU foramen (no de la línea media) y baja hacia
+                // afuera y adelante. La inclinación caudal crece de cervical a lumbar,
+                // hasta abrirse en abanico como la cola de caballo.
+                // [yForamen, longitud, caída, radio, zForamen]
                 const NERVE_LEVELS = [
-                    [midY(VERT_Y.C1, VERT_Y.C2), 1.1, 0.05, 0.10, 0.055, 0.50], // C2
-                    [midY(VERT_Y.C2, VERT_Y.C3), 1.2, 0.07, 0.12, 0.055, 0.50], // C3
-                    [midY(VERT_Y.C3, VERT_Y.C4), 1.2, 0.09, 0.13, 0.060, 0.51], // C4
-                    [midY(VERT_Y.C4, VERT_Y.C5), 1.3, 0.10, 0.14, 0.060, 0.51], // C5
-                    [midY(VERT_Y.C5, VERT_Y.C6), 1.3, 0.11, 0.15, 0.060, 0.52], // C6
-                    [midY(VERT_Y.C6, VERT_Y.C7), 1.4, 0.13, 0.16, 0.065, 0.52], // C7
-                    [midY(VERT_Y.C7, VERT_Y.T1), 1.5, 0.16, 0.18, 0.065, 0.52], // C8
-                    [midY(VERT_Y.T1, VERT_Y.T2), 1.6, 0.19, 0.20, 0.060, 0.53], // T1
-                    [midY(VERT_Y.T2, VERT_Y.T3), 1.7, 0.22, 0.21, 0.060, 0.53], // T2
-                    [midY(VERT_Y.T3, VERT_Y.T4), 1.7, 0.24, 0.22, 0.060, 0.53], // T3
-                    [midY(VERT_Y.T4, VERT_Y.T5), 1.8, 0.26, 0.22, 0.060, 0.53], // T4
-                    [midY(VERT_Y.T5, VERT_Y.T6), 1.8, 0.28, 0.23, 0.060, 0.53], // T5
-                    [midY(VERT_Y.T6, VERT_Y.T7), 1.9, 0.30, 0.23, 0.060, 0.53], // T6
-                    [midY(VERT_Y.T7, VERT_Y.T8), 1.9, 0.32, 0.24, 0.060, 0.54], // T7
-                    [midY(VERT_Y.T8, VERT_Y.T9), 2.0, 0.34, 0.25, 0.065, 0.54], // T8
-                    [midY(VERT_Y.T9, VERT_Y.T10),2.0, 0.36, 0.25, 0.065, 0.54], // T9
-                    [midY(VERT_Y.T10,VERT_Y.T11),2.0, 0.38, 0.26, 0.065, 0.54], // T10
-                    [midY(VERT_Y.T11,VERT_Y.T12),2.0, 0.40, 0.26, 0.065, 0.54], // T11
-                    [midY(VERT_Y.T12,VERT_Y.L1), 2.1, 0.45, 0.28, 0.070, 0.54], // T12
-                    [midY(VERT_Y.L1, VERT_Y.L2), 2.3, 0.52, 0.30, 0.075, 0.53], // L1
-                    [midY(VERT_Y.L2, VERT_Y.L3), 2.5, 0.60, 0.33, 0.080, 0.52], // L2
-                    [midY(VERT_Y.L3, VERT_Y.L4), 2.7, 0.68, 0.36, 0.080, 0.51], // L3
-                    [midY(VERT_Y.L4, VERT_Y.L5), 3.0, 0.75, 0.40, 0.085, 0.50], // L4
-                    [midY(VERT_Y.L5, VERT_Y.S1), 2.5, 0.55, 0.35, 0.075, 0.48], // L5
+                    [midY(VERT_Y.C1, VERT_Y.C2), 0.34, 0.10, 0.034, 0.50], // C2
+                    [midY(VERT_Y.C2, VERT_Y.C3), 0.36, 0.14, 0.034, 0.50], // C3
+                    [midY(VERT_Y.C3, VERT_Y.C4), 0.38, 0.18, 0.036, 0.51], // C4
+                    [midY(VERT_Y.C4, VERT_Y.C5), 0.40, 0.22, 0.038, 0.51], // C5
+                    [midY(VERT_Y.C5, VERT_Y.C6), 0.42, 0.26, 0.040, 0.52], // C6
+                    [midY(VERT_Y.C6, VERT_Y.C7), 0.44, 0.30, 0.042, 0.52], // C7
+                    [midY(VERT_Y.C7, VERT_Y.T1), 0.44, 0.34, 0.042, 0.52], // C8
+                    [midY(VERT_Y.T1, VERT_Y.T2), 0.40, 0.38, 0.034, 0.53], // T1
+                    [midY(VERT_Y.T2, VERT_Y.T3), 0.40, 0.40, 0.032, 0.53], // T2
+                    [midY(VERT_Y.T3, VERT_Y.T4), 0.40, 0.42, 0.032, 0.53], // T3
+                    [midY(VERT_Y.T4, VERT_Y.T5), 0.40, 0.44, 0.032, 0.53], // T4
+                    [midY(VERT_Y.T5, VERT_Y.T6), 0.40, 0.46, 0.032, 0.53], // T5
+                    [midY(VERT_Y.T6, VERT_Y.T7), 0.40, 0.48, 0.032, 0.53], // T6
+                    [midY(VERT_Y.T7, VERT_Y.T8), 0.40, 0.50, 0.032, 0.54], // T7
+                    [midY(VERT_Y.T8, VERT_Y.T9), 0.40, 0.52, 0.034, 0.54], // T8
+                    [midY(VERT_Y.T9, VERT_Y.T10),0.40, 0.54, 0.034, 0.54], // T9
+                    [midY(VERT_Y.T10,VERT_Y.T11),0.42, 0.56, 0.034, 0.54], // T10
+                    [midY(VERT_Y.T11,VERT_Y.T12),0.44, 0.60, 0.036, 0.54], // T11
+                    [midY(VERT_Y.T12,VERT_Y.L1), 0.46, 0.68, 0.040, 0.54], // T12
+                    [midY(VERT_Y.L1, VERT_Y.L2), 0.50, 0.82, 0.044, 0.53], // L1
+                    [midY(VERT_Y.L2, VERT_Y.L3), 0.54, 0.98, 0.048, 0.52], // L2
+                    [midY(VERT_Y.L3, VERT_Y.L4), 0.56, 1.15, 0.050, 0.51], // L3
+                    [midY(VERT_Y.L4, VERT_Y.L5), 0.58, 1.32, 0.052, 0.50], // L4
+                    [midY(VERT_Y.L5, VERT_Y.S1), 0.56, 1.45, 0.048, 0.48], // L5
                 ];
-                NERVE_LEVELS.forEach(([yF, len, downAng, fwdAng, r, zF]) => {
-                    const nGroup = new THREE.Group();
-                    const makeRoot = (side) => {
-                        const root = new THREE.Mesh(
-                            new THREE.CylinderGeometry(r, r * 0.7, len, 8).rotateZ(Math.PI / 2),
+
+                // Tubo que se adelgaza hacia el extremo distal
+                const tuboAfilado = (curva, r0, r1, segs = 18, radial = 7) => {
+                    const g = new THREE.TubeGeometry(curva, segs, 1, radial, false);
+                    const pos = g.attributes.position, v = new THREE.Vector3();
+                    for (let i = 0; i <= segs; i++) {
+                        const t = i / segs;
+                        const r = r0 + (r1 - r0) * t;
+                        const c = curva.getPointAt(t);
+                        for (let j = 0; j <= radial; j++) {
+                            const idx = i * (radial + 1) + j;
+                            if (idx >= pos.count) break;
+                            v.set(pos.getX(idx), pos.getY(idx), pos.getZ(idx));
+                            v.sub(c).multiplyScalar(r).add(c);
+                            pos.setXYZ(idx, v.x, v.y, v.z);
+                        }
+                    }
+                    g.computeVertexNormals();
+                    return g;
+                };
+
+                const X_FORAMEN = 0.26;   // separación del canal donde nace la raíz
+                NERVE_LEVELS.forEach(([yF, len, caida, r, zF]) => {
+                    [-1, 1].forEach(side => {
+                        const pts = [];
+                        const N = 5;
+                        for (let i = 0; i <= N; i++) {
+                            const t = i / N;
+                            pts.push(new THREE.Vector3(
+                                side * (X_FORAMEN + len * t),      // hacia afuera
+                                yF - caida * len * t * t,          // cae, más al alejarse
+                                zF - 0.60 * t - 0.10 * t * t       // del canal hacia adelante
+                            ));
+                        }
+                        const raiz = new THREE.Mesh(
+                            tuboAfilado(new THREE.CatmullRomCurve3(pts), r, r * 0.45),
                             mats.nerve.clone()
                         );
-                        root.position.set(side * len / 2, 0, 0);
-                        root.rotation.y = side * fwdAng;
-                        root.castShadow = true;
-                        root.userData.layer = 'tissue';
-                        return root;
-                    };
-                    nGroup.add(makeRoot(-1), makeRoot(1));
-                    nGroup.rotation.z = -downAng;
-                    nGroup.position.set(0, yF, zF);
-                    tissueGroup.add(nGroup);
+                        raiz.castShadow = true;
+                        raiz.userData.layer = 'tissue';
+                        tissueGroup.add(raiz);
+                    });
                 });
 
                 // ── Sistema vascular espinal ──────────────────────────────────────────────
@@ -824,10 +854,16 @@
 
                 // Arteria espinal anterior (ASA): surco anterior de la médula, X=0
                 // Recorre desde C1 hasta el cono (L1-L2); diámetro ~0.8 mm real → 0.038 u aquí
+                // Discurre pegada al surco anterior de la médula, siguiendo su curva
                 const asaPts = [];
                 for (let j = 0; j <= 24; j++) {
                     const t = j / 24;
-                    asaPts.push(new THREE.Vector3(0, VERT_Y.C1 + t * (conusY - VERT_Y.C1), 0.36));
+                    if (curvaMedula) {
+                        const c = curvaMedula.getPointAt(t);
+                        asaPts.push(new THREE.Vector3(0, c.y, c.z - 0.13));
+                    } else {
+                        asaPts.push(new THREE.Vector3(0, VERT_Y.C1 + t * (conusY - VERT_Y.C1), 0.36));
+                    }
                 }
                 const asaMesh = new THREE.Mesh(
                     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(asaPts), 48, 0.038, 6, false),
@@ -841,7 +877,12 @@
                     const psaPts = [];
                     for (let j = 0; j <= 16; j++) {
                         const t = j / 16;
-                        psaPts.push(new THREE.Vector3(xPSA, VERT_Y.C2 + t * (conusY - VERT_Y.C2), 0.78));
+                        if (curvaMedula) {
+                            const c = curvaMedula.getPointAt(Math.min(1, t * 0.98 + 0.02));
+                            psaPts.push(new THREE.Vector3(xPSA, c.y, c.z + 0.11));
+                        } else {
+                            psaPts.push(new THREE.Vector3(xPSA, VERT_Y.C2 + t * (conusY - VERT_Y.C2), 0.78));
+                        }
                     }
                     const psaMesh = new THREE.Mesh(
                         new THREE.TubeGeometry(new THREE.CatmullRomCurve3(psaPts), 32, 0.022, 5, false),
@@ -859,11 +900,13 @@
                     const isAdamk = Math.abs(yR - adamkCenterY) < 0.20;
                     const side = (isAdamk || idx % 2 === 0) ? -1 : 1; // Adamkiewicz siempre izquierda
                     const radR = isAdamk ? 0.032 : 0.018;
+                    // Acompañan a la raíz nerviosa desde el foramen hasta la arteria
+                    // espinal anterior; por eso arrancan a la altura del hueso, no más lejos.
                     const radPts = [
-                        new THREE.Vector3(side * 1.55, yR,        0.52),
-                        new THREE.Vector3(side * 0.85, yR - 0.08, 0.45),
-                        new THREE.Vector3(side * 0.20, yR - 0.12, 0.38),
-                        new THREE.Vector3(0,            yR - 0.14, 0.36),
+                        new THREE.Vector3(side * 0.80, yR + 0.10, 0.20),
+                        new THREE.Vector3(side * 0.50, yR + 0.02, 0.30),
+                        new THREE.Vector3(side * 0.20, yR - 0.06, 0.34),
+                        new THREE.Vector3(0,           yR - 0.10, 0.36),
                     ];
                     const radMesh = new THREE.Mesh(
                         new THREE.TubeGeometry(new THREE.CatmullRomCurve3(radPts), 10, radR, 5, false),
