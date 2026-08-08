@@ -674,7 +674,76 @@
             return vGroup;
         }
 
-        let curvaMedula = null;   // trayecto de la médula, compartido con las arterias
+
+        // Localiza el canal raquídeo midiendo el hueso: cerca de la línea media, el
+        // canal es la franja de baja densidad entre el cuerpo vertebral (delante) y
+        // el arco posterior (detrás). Devuelve su centro en Z para cada altura, ya
+        // suavizado. Así la médula sigue la curvatura real de la columna en vez de
+        // ir recta, que era lo que la dejaba por fuera del hueso en cervical.
+        function medirCanal(grupoOseo) {
+            grupoOseo.updateMatrixWorld(true);
+            const pts = [];
+            grupoOseo.traverse(o => {
+                if (!o.isMesh) return;
+                const g = o.geometry.attributes.position, v = new THREE.Vector3();
+                const paso = Math.max(1, Math.floor(g.count / 6000));
+                for (let i = 0; i < g.count; i += paso) {
+                    v.set(g.getX(i), g.getY(i), g.getZ(i)).applyMatrix4(o.matrixWorld);
+                    if (Math.abs(v.x) < 0.22) pts.push([v.y, v.z]);
+                }
+            });
+            if (pts.length < 500) return null;
+
+            const centro = (y0, y1) => {
+                const zs = pts.filter(p => p[0] >= y0 && p[0] < y1).map(p => p[1]);
+                if (zs.length < 40) return null;
+                const zmin = Math.min(...zs), zmax = Math.max(...zs), N = 24, w = (zmax - zmin) / N;
+                if (w <= 0) return null;
+                const bins = new Array(N).fill(0);
+                zs.forEach(z => bins[Math.min(N - 1, Math.floor((z - zmin) / w))]++);
+                const umbral = Math.max(...bins) * 0.18;
+                let mejor = null, i = 1;
+                while (i < N - 1) {
+                    if (bins[i] < umbral) { let j = i; while (j < N - 1 && bins[j] < umbral) j++;
+                        if (!mejor || j - i > mejor.len) mejor = { ini: i, len: j - i }; i = j; }
+                    else i++;
+                }
+                return mejor ? zmin + (mejor.ini + mejor.len / 2) * w : null;
+            };
+
+            const crudos = [];
+            for (let y = -4.6; y <= 5.6; y += 0.4) {
+                const z = centro(y, y + 0.4);
+                if (z !== null) crudos.push({ y: y + 0.2, z });
+            }
+            if (crudos.length < 6) return null;
+
+            // Descartar saltos bruscos (ruido del histograma) y suavizar
+            const mediana = crudos.map(c => c.z).slice().sort((a, b) => a - b)[Math.floor(crudos.length / 2)];
+            const limpios = crudos.filter(c => Math.abs(c.z - mediana) < 0.75);
+            const suave = limpios.map((c, i) => {
+                const v = limpios.slice(Math.max(0, i - 2), i + 3).map(o => o.z);
+                return { y: c.y, z: v.reduce((a, b) => a + b, 0) / v.length };
+            });
+            return suave.sort((a, b) => a.y - b.y);
+        }
+
+        // Interpola el centro del canal a una altura dada
+        function zCanal(canal, y) {
+            if (!canal || !canal.length) return 0.10;
+            if (y <= canal[0].y) return canal[0].z;
+            if (y >= canal[canal.length - 1].y) return canal[canal.length - 1].z;
+            for (let i = 1; i < canal.length; i++) {
+                if (y <= canal[i].y) {
+                    const a = canal[i - 1], b = canal[i], t = (y - a.y) / (b.y - a.y);
+                    return a.z + (b.z - a.z) * t;
+                }
+            }
+            return canal[canal.length - 1].z;
+        }
+
+        let curvaMedula = null;
+        let canalRaquideo = null;   // trayecto de la médula, compartido con las arterias
 
         function generateSpine() {
             animatedMeshes = [];
@@ -694,16 +763,15 @@
                 // C1 centroide Y=5.81, cono medular ≈ L1-L2 midpoint Y=-1.61
                 // Longitud médula ≈ 7.72 u. Centro en Y=2.25.  Z=+0.55 = interior del canal
                 // tras rotation.y=π del spine (Z>0 = posterior en escena)
-                const cordPts = [
-                    new THREE.Vector3( 0.00, 6.10,  0.50),  // base cráneo / C0
-                    new THREE.Vector3( 0.00, 5.50,  0.52),  // C1
-                    new THREE.Vector3( 0.00, 4.50,  0.54),  // C4 (lordosis cervical)
-                    new THREE.Vector3( 0.00, 3.00,  0.56),  // C7-T1
-                    new THREE.Vector3( 0.00, 1.50,  0.60),  // T4 (cifosis dorsal)
-                    new THREE.Vector3( 0.00, 0.00,  0.62),  // T8
-                    new THREE.Vector3( 0.00,-1.00,  0.60),  // T12
-                    new THREE.Vector3( 0.00,-1.61,  0.58),  // cono medular L1-L2
-                ];
+                // La médula recorre el canal medido: así acompaña la lordosis cervical
+                // y la cifosis dorsal en vez de atravesar el hueso.
+                const cordPts = [];
+                const yAlto = 6.10, yCono = -1.61;   // cono medular: unión L1-L2
+                for (let i = 0; i <= 14; i++) {
+                    const t = i / 14;
+                    const y = yAlto + t * (yCono - yAlto);
+                    cordPts.push(new THREE.Vector3(0, y, zCanal(canalRaquideo, y)));
+                }
                 const cordCurve = new THREE.CatmullRomCurve3(cordPts.map(p => new THREE.Vector3(p.x, p.y, p.z)));
                 curvaMedula = cordCurve;   // las arterias espinales la siguen
                 // Radio variable: médula ~10mm diámetro → r≈0.085 u. Ensanchamientos
@@ -761,6 +829,7 @@
                     child.userData.layer = 'bone';
                 });
                 boneGroup.add(spineMesh);
+                canalRaquideo = medirCanal(spineMesh);   // trayecto real del canal
 
                 // ── Nervios radiculares — posiciones derivadas del Spine.glb real ──────
                 // Escala: 12.0 / 699.9 mm → Y_three.js = Y_bp3d_mm * 0.01715
@@ -826,7 +895,9 @@
                 };
 
                 const X_FORAMEN = 0.26;   // separación del canal donde nace la raíz
-                NERVE_LEVELS.forEach(([yF, len, caida, r, zF]) => {
+                NERVE_LEVELS.forEach(([yF, len, caida, rr, _zIgnorado]) => {
+                    const r = rr;
+                    const zF = zCanal(canalRaquideo, yF);   // foramen a la altura del canal
                     [-1, 1].forEach(side => {
                         const pts = [];
                         const N = 5;
@@ -916,51 +987,72 @@
                     tissueGroup.add(radMesh);
                 });
 
-                // Marcadores de patología sobre la columna real
-                const pY = 1.2; // nivel aproximado toraco-lumbar (zona de mayor carga)
+                // ── Marcadores de patología, cada uno en SU nivel ─────────────────
+                // Antes todos se dibujaban a una altura fija (y=1.2, que es D8), aunque
+                // la etiqueta dijera "L4-L5". Ahora cada uno va donde corresponde y se
+                // apoya en el canal medido.
+                const nivelPat = {
+                    hernia:   midY(VERT_Y.L4,  VERT_Y.L5),   // L4-L5, el más frecuente
+                    stenosis: midY(VERT_Y.L4,  VERT_Y.L5),   // estenosis lumbar
+                    listesis: midY(VERT_Y.L5,  VERT_Y.S1),   // ístmica L5-S1
+                    wedge:    midY(VERT_Y.T12, VERT_Y.L1),   // charnela toracolumbar
+                    burst:    midY(VERT_Y.T12, VERT_Y.L1),
+                };
+                const pY = nivelPat[currentPathology] !== undefined ? nivelPat[currentPathology] : -1.0;
+                const zC = zCanal(canalRaquideo, pY);        // centro del canal a ese nivel
+
                 if (currentPathology === 'hernia') {
-                    const hernia = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), mats.hernia);
-                    hernia.scale.set(1.5, 0.5, 1.5);
-                    hernia.position.set(-0.8, pY, 0.2);
-                    hernia.rotation.y = 0.5;
+                    // El disco protruye hacia atrás, contra el saco dural: queda entre
+                    // el cuerpo vertebral y la médula, algo lateralizado.
+                    const hernia = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 20), mats.hernia);
+                    hernia.scale.set(1.5, 0.55, 1.0);
+                    hernia.position.set(-0.16, pY, zC - 0.30);
                     animatedMeshes.push({mesh: hernia, type: 'glow'});
+                    hernia.userData.layer = 'pathology';
                     pathGroup.add(hernia);
+
                 } else if (currentPathology === 'wedge' || currentPathology === 'burst') {
-                    // Fragmento de compresión anterior
-                    const frag1 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 1.4), mats.bone);
-                    frag1.position.set(-0.4, pY + 0.05, 0.3);
-                    frag1.rotation.z = currentPathology === 'wedge' ? 0.28 : 0.15;
-                    frag1.userData.layer = 'pathology';
-                    pathGroup.add(frag1);
+                    // Acuñamiento: el cuerpo pierde altura por delante
+                    const cuna = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.30, 20), mats.hernia);
+                    cuna.scale.set(1.0, 1, 0.75);
+                    cuna.position.set(0, pY, zC - 0.42);
+                    cuna.rotation.x = currentPathology === 'wedge' ? -0.30 : -0.10;
+                    cuna.userData.layer = 'pathology';
+                    pathGroup.add(cuna);
                     if (currentPathology === 'burst') {
-                        const frag2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.25, 0.9), mats.bone);
-                        frag2.position.set(0.55, pY + 0.35, 0.55);
-                        frag2.rotation.set(0.2, 0.3, -0.12);
-                        frag2.userData.layer = 'pathology';
-                        pathGroup.add(frag2);
-                        const frag3 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.7), mats.bone);
-                        frag3.position.set(-0.3, pY - 0.35, -0.3);
-                        frag3.rotation.set(-0.15, -0.2, 0.1);
-                        frag3.userData.layer = 'pathology';
-                        pathGroup.add(frag3);
+                        // Retropulsión: un fragmento invade el canal
+                        const frag = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.16, 0.20), mats.hernia);
+                        frag.position.set(0.05, pY + 0.06, zC - 0.10);
+                        frag.rotation.set(0.15, 0.3, -0.1);
+                        frag.userData.layer = 'pathology';
+                        animatedMeshes.push({mesh: frag, type: 'glow'});
+                        pathGroup.add(frag);
                     }
+
                 } else if (currentPathology === 'stenosis') {
-                    // Ligamento amarillo hipertrófico + osteofito
-                    const lig = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.18, 16, 24), mats.hernia);
-                    lig.position.set(0, pY, -0.35);
-                    lig.scale.set(1.4, 0.9, 1);
-                    lig.userData.layer = 'pathology';
-                    pathGroup.add(lig);
-                    const ost = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), mats.bone);
-                    ost.position.set(0.5, pY + 0.4, 0.4);
-                    ost.userData.layer = 'pathology';
-                    pathGroup.add(ost);
+                    // Anillo que estrangula el canal: ligamento amarillo engrosado
+                    // por detrás y osteofitos por delante.
+                    const anillo = new THREE.Mesh(new THREE.TorusGeometry(0.20, 0.075, 14, 22), mats.hernia);
+                    anillo.position.set(0, pY, zC);
+                    anillo.rotation.x = Math.PI / 2;
+                    anillo.scale.set(1.5, 1, 1);
+                    anillo.userData.layer = 'pathology';
+                    animatedMeshes.push({mesh: anillo, type: 'glow'});
+                    pathGroup.add(anillo);
+                    [-1, 1].forEach(sd => {
+                        const ost = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 12), mats.bone);
+                        ost.position.set(sd * 0.22, pY, zC - 0.16);
+                        ost.userData.layer = 'pathology';
+                        pathGroup.add(ost);
+                    });
+
                 } else if (currentPathology === 'listesis') {
-                    // Espondilolistesis: desplazamiento anterior de vértebra superior
-                    const slipFrag = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.0, 1.6), mats.bone);
-                    slipFrag.position.set(0, pY + 0.5, 0.7);
-                    slipFrag.userData.layer = 'pathology';
-                    pathGroup.add(slipFrag);
+                    // Deslizamiento anterior del cuerpo de L5 sobre S1
+                    const desliz = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.30, 0.46), mats.hernia);
+                    desliz.position.set(0, pY + 0.12, zC - 0.62);
+                    desliz.userData.layer = 'pathology';
+                    animatedMeshes.push({mesh: desliz, type: 'glow'});
+                    pathGroup.add(desliz);
                 } else if (currentPathology === 'avm') {
                     for(let i = 0; i < 8; i++) {
                         const r = 0.8 + i * 0.3;
