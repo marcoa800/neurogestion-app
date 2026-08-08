@@ -461,6 +461,14 @@
                         child.material = mats.tissueStroke.clone();
                     else
                         child.material = mats.tissue.clone();
+                    // Con una lesión intraparenquimatosa seleccionada, el cerebro se
+                    // vuelve translúcido: si no, el tumor o el nido de la MAV quedan
+                    // escondidos dentro y el usuario no ve nada al elegirlos.
+                    if (['tumor', 'avm', 'aneurysm'].includes(currentPathology)) {
+                        child.material.transparent = true;
+                        child.material.opacity = 0.30;
+                        child.material.depthWrite = false;
+                    }
                     child.castShadow = true;
                     child.receiveShadow = true;
                     child.userData.layer = 'tissue';
@@ -594,35 +602,68 @@
             // 4. CAPA PATOLOGÍA
             const pathGroup = new THREE.Group(); pathGroup.userData.layer = 'pathology';
             if (currentPathology === 'aneurysm') {
-                const aneurysm = new THREE.Mesh(new THREE.SphereGeometry(0.38, 32, 32), mats.artery);
-                // AComA — arteria comunicante anterior (sitio más común de aneurisma)
-                aneurysm.position.set(0.0, 0.0, 1.38);
+                // Aneurisma sacular sobre la comunicante anterior. El saco se abomba
+                // hacia arriba y adelante desde el vaso; antes era una esfera casi 10
+                // veces el calibre de la arteria.
+                const aneurysm = new THREE.Mesh(new THREE.SphereGeometry(0.19, 28, 22), mats.artery);
+                aneurysm.scale.set(0.85, 1.15, 1.0);
+                aneurysm.position.set(0.0, 0.12, 1.46);
                 animatedMeshes.push({ mesh: aneurysm, type: 'pulse' });
                 pathGroup.add(aneurysm); pathGroup.position.x = shiftX;
             } else if (currentPathology === 'tumor') {
-                const tumorGeo = new THREE.IcosahedronGeometry(1.5, 16);
+                // El cerebro mide 5.3 de ancho: un tumor de radio 1.5 ocupaba más de
+                // medio hemisferio y asomaba fuera. Se reduce a un tamaño verosímil.
+                const tumorGeo = new THREE.IcosahedronGeometry(0.72, 3);
                 const tp = tumorGeo.attributes.position;
-                for(let i=0; i<tp.count; i++) tp.setXYZ(i, tp.getX(i)+(Math.random()-0.5)*0.5, tp.getY(i)+(Math.random()-0.5)*0.5, tp.getZ(i)+(Math.random()-0.5)*0.5);
+                for(let i=0; i<tp.count; i++) tp.setXYZ(i, tp.getX(i)+(Math.random()-0.5)*0.22, tp.getY(i)+(Math.random()-0.5)*0.22, tp.getZ(i)+(Math.random()-0.5)*0.22);
                 tumorGeo.computeVertexNormals();
-                const tumor = new THREE.Mesh(tumorGeo, mats.tumor); tumor.position.set(-1.8, 2.0, 0.2);
+                const tumor = new THREE.Mesh(tumorGeo, mats.tumor); tumor.position.set(-1.25, 2.15, 0.35);
                 animatedMeshes.push({ mesh: tumor, type: 'breath' });
                 pathGroup.add(tumor);
             } else if (currentPathology === 'hematoma') {
                 const hemGeo = new THREE.SphereGeometry(3.6, 64, 64, 0, Math.PI, 0, Math.PI);
                 const hp = hemGeo.attributes.position;
                 for(let i=0; i<hp.count; i++) if(hp.getX(i) < 0) hp.setX(i, hp.getX(i) * -0.5); 
-                hemGeo.scale(0.15, 1.1, 1.15); hemGeo.computeVertexNormals();
-                const hematoma = new THREE.Mesh(hemGeo, mats.hematoma); hematoma.position.set(2.6, 1.6, 0);
+                // Colección subdural: lámina en semiluna sobre la convexidad. Antes medía
+                // 7.9 de alto en un cerebro de 5.7 y desbordaba por arriba y por abajo.
+                hemGeo.scale(0.13, 0.58, 0.74); hemGeo.computeVertexNormals();
+                const hematoma = new THREE.Mesh(hemGeo, mats.hematoma); hematoma.position.set(2.52, 1.55, 0);
                 pathGroup.add(hematoma);
             } else if (currentPathology === 'avm') {
-                for(let i=0; i<30; i++) {
-                    const r = 1.0;
-                    vesselsGroup.add(createVessel([
-                        new THREE.Vector3((Math.random()-0.5)*r - 1.5, Math.random()*r + 1.5, (Math.random()-0.5)*r + 0.5),
-                        new THREE.Vector3((Math.random()-0.5)*r - 1.5, Math.random()*r + 1.5, (Math.random()-0.5)*r + 0.5),
-                        new THREE.Vector3((Math.random()-0.5)*r - 1.5, Math.random()*r + 1.5, (Math.random()-0.5)*r + 0.5)
-                    ], 0.05, Math.random()>0.5?mats.artery:mats.vein));
+                // Una MAV tiene tres partes que importan quirúrgicamente: el nido,
+                // las arterias aferentes y la vena de drenaje. Antes eran 30 vasos
+                // colocados al azar, sin estructura reconocible.
+                const cx = -1.35, cy = 2.10, cz = 0.55;   // nido parietal izquierdo
+                // Nido: ovillo compacto de vasos entrelazados
+                for (let i = 0; i < 22; i++) {
+                    const a = Math.random() * Math.PI * 2, b = Math.random() * Math.PI;
+                    const rad = 0.30 + Math.random() * 0.18;
+                    const p0 = new THREE.Vector3(cx + Math.cos(a)*rad, cy + Math.cos(b)*rad*0.8, cz + Math.sin(a)*rad);
+                    const p1 = new THREE.Vector3(cx + (Math.random()-0.5)*0.22, cy + (Math.random()-0.5)*0.22, cz + (Math.random()-0.5)*0.22);
+                    const p2 = new THREE.Vector3(cx - Math.cos(a)*rad*0.8, cy - Math.cos(b)*rad*0.6, cz - Math.sin(a)*rad*0.8);
+                    const v = createVessel([p0, p1, p2], 0.035, Math.random() > 0.45 ? mats.artery : mats.vein);
+                    v.userData.layer = 'pathology';
+                    pathGroup.add(v);
                 }
+                // Arterias aferentes: llegan desde la cerebral media
+                [[-2.30, 1.30, 0.30], [-2.15, 1.75, 0.95]].forEach(o => {
+                    const af = createVessel([
+                        new THREE.Vector3(o[0], o[1], o[2]),
+                        new THREE.Vector3((o[0]+cx)/2, (o[1]+cy)/2, (o[2]+cz)/2),
+                        new THREE.Vector3(cx - 0.28, cy - 0.10, cz - 0.05),
+                    ], 0.055, mats.artery);
+                    af.userData.layer = 'pathology';
+                    pathGroup.add(af);
+                });
+                // Vena de drenaje: sale del nido hacia el seno sagital superior
+                const drenaje = createVessel([
+                    new THREE.Vector3(cx + 0.20, cy + 0.28, cz),
+                    new THREE.Vector3(cx + 0.55, cy + 0.95, cz - 0.35),
+                    new THREE.Vector3(-0.45, cy + 1.65, cz - 0.90),
+                    new THREE.Vector3(-0.15, cy + 2.05, -0.60),
+                ], 0.075, mats.vein);
+                drenaje.userData.layer = 'pathology';
+                pathGroup.add(drenaje);
             }
             group.add(pathGroup);
             return group;
