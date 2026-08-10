@@ -332,8 +332,8 @@
 
             const onModelReady = () => {
                 loadedCount++;
-                loaderBar.style.transform = `scaleX(${loadedCount / 4})`;
-                if(loadedCount >= 4) {
+                loaderBar.style.transform = `scaleX(${loadedCount / 3})`;
+                if(loadedCount >= 3) {
                     setAnatomy('brain');
                     document.getElementById('loader').style.opacity = '0';
                     setTimeout(() => document.getElementById('loader').style.display = 'none', 600);
@@ -351,14 +351,10 @@
                 onModelReady();
             });
 
-            // Médula Espinal: Visible Human Female Spinal Cord (HuBMAP CCF v1.3, CC BY 4.0)
-            gltfLoader.load('./Spinal_Cord.glb', (gltf) => {
-                spinalCordGLB = normalizeGLB(gltf.scene, 9.5);  // wrapper centrado en (0,0,0)
-                onModelReady();
-            }, undefined, (err) => {
-                console.warn('[NeuroAtlas] Spinal Cord no disponible, usando geometría procedural.', err);
-                onModelReady();
-            });
+            // Médula Espinal (Visible Human, HuBMAP CCF v1.3, CC BY 4.0):
+            // NO se precarga. Solo hace falta si Spine.glb falla, y son 7 MB que
+            // antes bajaba todo el mundo en cada visita sin llegar a usarlos.
+            // Se pide bajo demanda desde el manejador de error de Spine.glb.
 
             // Cráneo: BodyParts3D huesos combinados (CC BY-SA 2.1 Japan, DBCLS)
             // Huesos: frontal, parietal ×2, temporal ×2, occipital, esfenoides, etmoides, zigomático ×2, mandíbula
@@ -385,8 +381,11 @@
                 spineColumnGLB = normalizeGLB(gltf.scene, 12.0); // 18 vértebras reales
                 onModelReady();
             }, undefined, (err) => {
-                console.warn('[NeuroAtlas] Spine.glb no disponible, usando geometría procedural.', err);
-                onModelReady();
+                console.warn('[NeuroAtlas] Spine.glb no disponible; recurriendo a Spinal_Cord.glb.', err);
+                gltfLoader.load('./Spinal_Cord.glb', (g2) => {
+                    spinalCordGLB = normalizeGLB(g2.scene, 9.5);
+                    onModelReady();
+                }, undefined, () => onModelReady());
             });
             // ────────────────────────────────────────────────────────────────────
 
